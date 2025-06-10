@@ -1,14 +1,14 @@
 #!/bin/bash
 
 # Backhaul Ultimate Pro Manager
-# Version: 9.1 (Final Stability-Tuned Version)
+# Version: 9.2 (Final Corrected Download)
 # Author: hayousef68
 # Feature-Rich implementation by Google Gemini, combining all user requests.
 
 # --- Configuration ---
 CONFIG_DIR="/etc/backhaul/configs"
 BINARY_PATH="/usr/local/bin/backhaul"
-SCRIPT_VERSION="v9.1"
+SCRIPT_VERSION="v9.2"
 
 # --- Colors ---
 RED='\033[0;31m'
@@ -52,16 +52,25 @@ install_or_update() {
     echo -e "${BLUE}Installing/Updating Backhaul Core (Advanced Version)...${NC}"
     ARCH=$(detect_arch)
     if [ -z "$ARCH" ]; then echo -e "${RED}Error: Unsupported system architecture '$(uname -m)'.${NC}"; return; fi
-    local DOWNLOAD_URL="https://github.com/proxystore/backhaul/releases/download/v1.1.2/backhaul_linux_${ARCH}.tar.gz"
+    
+    # **FIXED**: Corrected the file extension from .tar.gz to .zip
+    local DOWNLOAD_URL="https://github.com/proxystore/backhaul/releases/download/v1.1.2/backhaul_linux_${ARCH}.zip"
+    
     echo -e "${CYAN}Downloading advanced core for architecture: ${ARCH}...${NC}"
     cd /tmp
-    if ! wget -q --show-progress "$DOWNLOAD_URL" -O backhaul.tar.gz; then echo -e "${RED}Download failed!${NC}"; return; fi
-    tar -xzf backhaul.tar.gz
+    if ! wget -q --show-progress "$DOWNLOAD_URL" -O backhaul.zip; then echo -e "${RED}Download failed!${NC}"; return; fi
+    
+    # **FIXED**: Use unzip instead of tar and ensure it's installed
+    if ! command -v unzip &> /dev/null; then
+        echo -e "${YELLOW}unzip is not installed. Installing...${NC}"
+        apt-get update > /dev/null 2>&1 && apt-get install -y unzip > /dev/null 2>&1 || yum install -y unzip > /dev/null 2>&1
+    fi
+    
+    unzip -o backhaul.zip
     chmod +x backhaul
-    # Ensure config directory exists after installation
     mkdir -p "$CONFIG_DIR"
     mv backhaul "$BINARY_PATH"
-    rm -f /tmp/backhaul.tar.gz
+    rm -f /tmp/backhaul.zip
     echo -e "${GREEN}Backhaul Core v1.1.2 installed/updated successfully!${NC}"
 }
 
@@ -71,18 +80,13 @@ optimize_system() {
     
     cat > /etc/sysctl.d/99-backhaul-optimizations.conf << EOF
 # TCP Keepalive settings for stable tunnels
-# Send keepalive probes after 60 seconds of inactivity
 net.ipv4.tcp_keepalive_time=60
-# Send a probe every 10 seconds after the first one
 net.ipv4.tcp_keepalive_intvl=10
-# Consider the connection dead after 5 failed probes
 net.ipv4.tcp_keepalive_probes=5
 EOF
 
     sysctl -p /etc/sysctl.d/99-backhaul-optimizations.conf > /dev/null
-    
     echo -e "${GREEN}System TCP settings have been optimized for stability.${NC}"
-    echo -e "${YELLOW}These settings will persist after reboot.${NC}"
 }
 
 
@@ -108,7 +112,7 @@ configure_new_tunnel() {
 
 generate_server_config() {
     local name=$1
-    if [[ -z "$name" || -f "$CONFIG_DIR/${name}.toml" ]]; then echo -e "${RED}Error: Config name invalid or exists.${NC}"; return; fi
+    if [[ -z "$name" || -f "$CONFIG_DIR/${name}.toml" ]]; then echo -e "${RED}Error: Config name invalid.${NC}"; return; fi
     mkdir -p "$CONFIG_DIR"
     clear
     echo -e "${CYAN}--- Configuring IRAN server: ${WHITE}${name}${NC} ---${NC}"
@@ -147,7 +151,7 @@ generate_server_config() {
 
 generate_client_config() {
     local name=$1
-    if [[ -z "$name" || -f "$CONFIG_DIR/${name}.toml" ]]; then echo -e "${RED}Error: Config name invalid or exists.${NC}"; return; fi
+    if [[ -z "$name" || -f "$CONFIG_DIR/${name}.toml" ]]; then echo -e "${RED}Error: Config name invalid.${NC}"; return; fi
     mkdir -p "$CONFIG_DIR"
     clear
     echo -e "${CYAN}--- Configuring KHAREJ client: ${WHITE}${name}${NC} ---${NC}"
