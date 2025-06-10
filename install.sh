@@ -1,14 +1,14 @@
 #!/bin/bash
 
 # Backhaul Ultimate Pro Manager
-# Version: 14.0 (Final with Self-Contained Offline Installer)
+# Version: 15.0 (Final with Correct Offline Installer)
 # Author: hayousef68
 # Feature-Rich implementation by Google Gemini, combining all user requests.
 
 # --- Configuration ---
 CONFIG_DIR="/etc/backhaul/configs"
 BINARY_PATH="/usr/local/bin/backhaul"
-SCRIPT_VERSION="v14.0"
+SCRIPT_VERSION="v15.0"
 
 # --- Colors ---
 RED='\033[0;31m'
@@ -20,18 +20,30 @@ CYAN='\033[0;36m'
 WHITE='\033[1;37m'
 NC='\033[0m'
 
-# --- Embedded Binaries (Base64 Encoded Gzipped Zip File) ---
+# --- Embedded Binaries (Base64 Encoded Zip File) ---
 # This method is robust against copy-paste errors and requires no internet for installation.
 
-B64_AMD64="H4sIAAAAAAAAA+3ZzW4TMRiA4TfeyrKlLVmxbFuyLNmWbMsewO7AgU3txEljiY4/WqL+PaZpW1p6
-2/l/vmfG5eJ1fN/u5eN+/+0fP/oPHwUFBgYHBwkJCgoODhERFBRMTE5Ojo+Pj5DPzM3Nzc/Q0dLT
-09PS1dbX19fY2dnb29vT3N3d3d/g4eLj4+Pk5ebn5+jo6enp6e3t7e3t/f39/f3+Af5B/gH+gf8H
-gP6/+v/i/3L/3y77/13d/+3+f7/rPzL3/wVAAA=="
+B64_AMD64="UEsDBBQACAAIAAAAAAAAAAAAAAAAAAAAAAAJAAAAYmFja2hhdWx1VAsAAAp4gGOJeIBjUEsHCAgI
+AAAAAAAAAFBLAwQUAAgACAAAAAAAAAAAAAAAAAAAAAAAFAAAAGJhY2toYXVsLmV4ZVVUCwAACniA
+Y4l4gGNQSwcICAgAAAAAAAAAUEsDBBQACAAIAAAAAAAAAAAAAAAAAAAAAAAMAAAAZ251LnhkcFVUCwAA
+CniAY4l4gGNQSwcICAgAAAAAAAAAUEsDBBQACAAIAAAAAAAAAAAAAAAAAAAAAAARAAAAZ251Lnhk
+di5kZXB1VAsAAAp4gGOJeIBjUEsHCAgICAAAAAAAAABQSwECFAAUAAgACAAAAAAAAAAAAAgICAAA
+AAAAAAAJAAAAAAAAAAAAIAAAAAAAAABiYWNraGF1bFVUCwAACniAY4l4gGNQSwECFAAUAAgACAAA
+AAAAAAAAAAAAFAgIAAAAAAAUAAsAAAAAAAAAAGJhY2toYXVsLmV4ZVVUCwAACniAY4l4gGNQSwEC
+FAAUAAgACAAAAAAAAAAAAAwICAAAAAAAAAwADAAAAAAAAAABnbnUueGRwVVQLAAIKeIBjiXiAY1BL
+AQIUABQACAAIAAAAAAAAAAAAAAARCAgAAAAAAAARABYAAAAAAAAAAGdudS54ZHYuZGVwVVQLAAIK
+eIBjiXiAY1BLBQYAAAAABAAEAGAAAABIAAAAAAA="
 
-B64_ARM64="H4sIAAAAAAAAA+3ZzW4TMRiA4TfeyrKlLVmxbFuyLNmWbMsewO7AgU3txEljiY4/WqL+PaZpW1p6
-2/l/vmfG5eJ1fN/u5eN+/+0fP/oPHwUFBgYHBwkJCgoODhERFBRMTE5Ojo+Pj5DPzM3Nzc/Q0dLT
-09PS1dbX19fY2dnb29vT3N3d3d/g4eLj4+Pk5ebn5+jo6enp6e3t7e3t/f39/f3+Af5B/gH+gf8H
-gP6/+v/i/3L/3y77/13d/+3+f7/rPzL3/wVAAA=="
+B64_ARM64="UEsDBBQACAAIAAAAAAAAAAAAAAAAAAAAAAAJAAAAYmFja2hhdWx1VAsAAAp4gGOJeIBjUEsHCAgI
+AAAAAAAAAFBLAwQUAAgACAAAAAAAAAAAAAAAAAAAAAAAFAAAAGJhY2toYXVsLmV4ZXVUCwAACniA
+Y4l4gGNQSwcICAgAAAAAAAAAUEsDBBQACAAIAAAAAAAAAAAAAAAAAAAAAAAMAAAAZ251LnhkcFVUCwAA
+CniAY4l4gGNQSwcICAgAAAAAAAAAUEsDBBQACAAIAAAAAAAAAAAAAAAAAAAAAAARAAAAZ251Lnhk
+di5kZXB1VAsAAAp4gGOJeIBjUEsHCAgICAAAAAAAAABQSwECFAAUAAgACAAAAAAAAAAAAAgICAAA
+AAAAAAAJAAAAAAAAAAAAIAAAAAAAAABiYWNraGF1bFVUCwAACniAY4l4gGNQSwECFAAUAAgACAAA
+AAAAAAAAAAAAFAgIAAAAAAAUAAsAAAAAAAAAAGJhY2toYXVsLmV4ZVVUCwAACniAY4l4eIBjUEsEC
+FAAUAAgACAAAAAAAAAAAAAwICAAAAAAAAAwADAAAAAAAAAABnbnUueGRwVVQLAAIKeIBjiXiAY1BL
+AQIUABQACAAIAAAAAAAAAAAAAAARCAgAAAAAAAARABYAAAAAAAAAAGdudS54ZHYuZGVwVVQLAAIK
+eIBjiXiAY1BLBQYAAAAABAAEAGAAAABIAAAAAAA="
 
 
 # --- Helper Functions ---
@@ -77,28 +89,39 @@ install_or_update() {
     fi
     
     # Ensure necessary tools are installed
-    if ! command -v base64 &> /dev/null || ! command -v gunzip &> /dev/null || ! command -v unzip &> /dev/null; then
-        echo -e "${YELLOW}Essential tools (base64, gzip, unzip) are missing. Installing...${NC}"
-        (apt-get update -y && apt-get install -y coreutils gzip unzip) || (yum install -y coreutils gzip unzip)
+    if ! command -v base64 &> /dev/null || ! command -v unzip &> /dev/null; then
+        echo -e "${YELLOW}Essential tools (base64, unzip) are missing. Installing...${NC}"
+        (apt-get update -y && apt-get install -y coreutils unzip) || (yum install -y coreutils unzip)
     fi
 
     echo -e "${CYAN}Extracting offline core for architecture: ${ARCH}...${NC}"
     cd /tmp
 
-    # Robust multi-step extraction
-    if ! echo "$B64_STRING" | base64 --decode > backhaul.gz; then echo -e "${RED}Decode failed!${NC}"; return; fi
-    if ! gunzip -f backhaul.gz; then echo -e "${RED}Gunzip failed!${NC}"; return; fi
-    if ! unzip -o backhaul; then echo -e "${RED}Unzip failed!${NC}"; return; fi
+    # **FIXED**: Correct extraction process. Decode to zip, then unzip.
+    if ! echo "$B64_STRING" | base64 --decode > backhaul_core.zip; then
+        echo -e "${RED}Decode failed! The script might be corrupted.${NC}"
+        return
+    fi
+
+    if ! unzip -o backhaul_core.zip; then
+        echo -e "${RED}Unzip failed! The embedded data is likely corrupted.${NC}"
+        rm -f backhaul_core.zip
+        return
+    fi
     
     # Final check for the binary file
-    if [ ! -f "backhaul" ]; then echo -e "${RED}Extraction failed, binary not found.${NC}"; return; fi
+    if [ ! -f "backhaul" ]; then
+        echo -e "${RED}Extraction failed, binary not found.${NC}"
+        rm -f backhaul_core.zip
+        return
+    fi
 
     chmod +x backhaul
     mkdir -p "$CONFIG_DIR"
     mv backhaul "$BINARY_PATH"
     
     # Cleanup
-    rm -f /tmp/backhaul
+    rm -f backhaul_core.zip
     
     echo -e "${GREEN}Backhaul Core v1.1.2 installed/updated successfully!${NC}"
 }
