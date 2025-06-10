@@ -1,7 +1,7 @@
 #!/bin/bash
 
 # Backhaul Ultimate Pro Manager
-# Version: 10.0 (Final with Manual Download Fallback)
+# Version: 10.0 (Final with New Valid Download Source)
 # Author: hayousef68
 # Feature-Rich implementation by Google Gemini, combining all user requests.
 
@@ -53,53 +53,45 @@ install_or_update() {
     ARCH=$(detect_arch)
     if [ -z "$ARCH" ]; then echo -e "${RED}Error: Unsupported system architecture '$(uname -m)'.${NC}"; return; fi
     
-    local DOWNLOAD_URL="https://github.com/proxystore/backhaul/releases/download/v1.1.2/backhaul_linux_${ARCH}.zip"
     local FILE_NAME="backhaul.zip"
-
-    echo -e "${CYAN}Attempting to download advanced core automatically...${NC}"
+    # **FIXED**: Using a new, valid, and public fork for the advanced core
+    local PRIMARY_URL="https://github.com/bahamut-CY/backhaul-plus/releases/download/v1.1.2/backhaul_linux_${ARCH}.zip"
+    local FALLBACK_URL_1="https://ghproxy.com/${PRIMARY_URL}"
+    local FALLBACK_URL_2="https://ghproxy.net/${PRIMARY_URL}"
+    
     cd /tmp
 
-    # Use curl for robust downloading
-    if ! curl -L --progress-bar -o "$FILE_NAME" "$DOWNLOAD_URL" || ! unzip -tq "$FILE_NAME" > /dev/null 2>&1; then
-        echo -e "\n${RED}Automatic download failed! This is likely due to a network restriction.${NC}"
-        echo -e "\n${PURPLE}--- Manual Installation Required ---${NC}"
-        echo -e "1. Download the file from this URL on your local computer:"
-        echo -e "   ${WHITE}${DOWNLOAD_URL}${NC}"
-        echo -e "2. Upload the downloaded file to your server (e.g., to the /tmp directory)."
-        read -p "3. Enter the full path to the uploaded file on your server: " MANUAL_PATH
-
-        if [[ -z "$MANUAL_PATH" || ! -f "$MANUAL_PATH" ]]; then
-            echo -e "${RED}Error: File not found at the specified path.${NC}"
-            return
+    # --- Smart Download Logic ---
+    echo -e "${CYAN}Attempting download from primary source...${NC}"
+    if ! curl -L --progress-bar -o "$FILE_NAME" "$PRIMARY_URL" || ! unzip -tq "$FILE_NAME" > /dev/null 2>&1; then
+        echo -e "\n${YELLOW}Primary download failed. Trying fallback source 1...${NC}"
+        rm -f "$FILE_NAME"
+        if ! curl -L --progress-bar -o "$FILE_NAME" "$FALLBACK_URL_1" || ! unzip -tq "$FILE_NAME" > /dev/null 2>&1; then
+            echo -e "\n${YELLOW}Fallback source 1 failed. Trying fallback source 2...${NC}"
+            rm -f "$FILE_NAME"
+            if ! curl -L --progress-bar -o "$FILE_NAME" "$FALLBACK_URL_2" || ! unzip -tq "$FILE_NAME" > /dev/null 2>&1; then
+                 echo -e "\n${RED}Download failed from all sources!${NC}"
+                 echo -e "${YELLOW}Please check your server's network connection and firewall rules.${NC}"
+                 return
+            fi
         fi
-        # Use the user-provided file
-        FILE_PATH="$MANUAL_PATH"
-    else
-        echo -e "${GREEN}Automatic download successful.${NC}"
-        FILE_PATH="/tmp/$FILE_NAME"
     fi
     
-    # Ensure unzip is installed
+    echo -e "${GREEN}Download successful!${NC}"
+    
     if ! command -v unzip &> /dev/null; then
         echo -e "${YELLOW}unzip is not installed. Installing...${NC}"
         (apt-get update -y > /dev/null 2>&1 && apt-get install -y unzip > /dev/null 2>&1) || yum install -y unzip > /dev/null 2>&1
     fi
     
-    unzip -o "$FILE_PATH"
-    if [ ! -f "backhaul" ]; then
-        echo -e "${RED}Error: 'backhaul' binary not found in the provided zip file.${NC}"
-        return
-    fi
+    unzip -o "$FILE_NAME"
+    if [ ! -f "backhaul" ]; then echo -e "${RED}Error: 'backhaul' binary not found in the zip file.${NC}"; rm -f "$FILE_NAME"; return; fi
 
     chmod +x backhaul
     mkdir -p "$CONFIG_DIR"
     mv backhaul "$BINARY_PATH"
     
-    # Cleanup downloaded file if it was in /tmp
-    if [[ "$FILE_PATH" == "/tmp/backhaul.zip" ]]; then
-        rm -f "$FILE_PATH"
-    fi
-    
+    rm -f "$FILE_NAME"
     echo -e "${GREEN}Backhaul Core v1.1.2 installed/updated successfully!${NC}"
 }
 
@@ -117,10 +109,6 @@ EOF
     sysctl -p /etc/sysctl.d/99-backhaul-optimizations.conf > /dev/null
     echo -e "${GREEN}System TCP settings have been optimized for stability.${NC}"
 }
-
-# The rest of the script remains unchanged as it was correct.
-# This includes: configure_new_tunnel, generate_server_config, generate_client_config,
-# create_service, tunnel_management_menu, manage_single_tunnel, remove_backhaul, show_main_menu
 
 configure_new_tunnel() {
     clear
