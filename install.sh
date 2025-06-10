@@ -1,14 +1,14 @@
 #!/bin/bash
 
 # Backhaul Professional Tunnel Manager
-# Version: 6.0
+# Version: 6.1 (Final Reviewed Version)
 # Author: hayousef68
-# Completely rewritten by Google Gemini with the correct core and user-specified menu
+# Rewritten and Enhanced by Google Gemini
 
 # --- Configuration ---
 CONFIG_DIR="/etc/backhaul/configs"
 BINARY_PATH="/usr/local/bin/backhaul"
-SCRIPT_VERSION="v6.0"
+SCRIPT_VERSION="v6.1"
 
 # --- Colors ---
 RED='\033[0;31m'
@@ -17,10 +17,11 @@ YELLOW='\033[1;33m'
 BLUE='\033[0;34m'
 PURPLE='\033[0;35m'
 CYAN='\033[0;36m'
-NC='\033[0m'
+NC='\033[0m' # No Color
 
 # --- Helper Functions ---
 
+# Ensures the script is run as root
 check_root() {
     if [[ $EUID -ne 0 ]]; then
         echo -e "${RED}Error: This script must be run as root.${NC}"
@@ -28,15 +29,17 @@ check_root() {
     fi
 }
 
+# Gets the installed core version
 get_core_version() {
     if [ -f "$BINARY_PATH" ]; then
-        # The advanced core uses a different version flag
+        # The advanced core uses --version flag
         $BINARY_PATH --version 2>/dev/null | awk '{print $2}' || echo "v1.1.2"
     else
         echo "Not Installed"
     fi
 }
 
+# Detects system architecture for downloading the correct binary
 detect_arch() {
     case $(uname -m) in
         x86_64 | amd64) echo "amd64" ;;
@@ -47,6 +50,7 @@ detect_arch() {
 
 # --- Core Functions ---
 
+# Installs or updates the advanced Backhaul core
 install_or_update() {
     clear
     echo -e "${BLUE}Installing/Updating Backhaul Core (Advanced Version)...${NC}"
@@ -55,7 +59,7 @@ install_or_update() {
         echo -e "${RED}Error: Unsupported system architecture '$(uname -m)'.${NC}"
         return
     fi
-    # This URL points to the community fork that has the advanced features like tcpmux.
+    # This URL points to the community fork with advanced features
     local DOWNLOAD_URL="https://github.com/proxystore/backhaul/releases/download/v1.1.2/backhaul_linux_${ARCH}.tar.gz"
     echo -e "${CYAN}Downloading advanced core for architecture: ${ARCH}...${NC}"
     cd /tmp
@@ -71,11 +75,12 @@ install_or_update() {
     echo -e "${GREEN}Backhaul Core v1.1.2 installed/updated successfully!${NC}"
 }
 
+# Main function to start the tunnel configuration process
 configure_new_tunnel() {
     clear
     echo -e "${PURPLE}--- Configure a new tunnel ---${NC}"
-    echo "1) Configure for IRAN server"
-    echo "2) Configure for KHAREJ server"
+    echo "1) Configure for IRAN server (Destination)"
+    echo "2) Configure for KHAREJ server (Source/Client)"
     read -p "Enter your choice: " ROLE_CHOICE
 
     clear
@@ -91,13 +96,14 @@ configure_new_tunnel() {
     fi
 }
 
+# Generates the server-side configuration file
 generate_server_config() {
     local name=$1
-    if [[ -z "$name" || -f "$CONFIG_DIR/${name}.toml" ]]; then echo -e "${RED}Error: Config name invalid.${NC}"; return; fi
+    if [[ -z "$name" || -f "$CONFIG_DIR/${name}.toml" ]]; then echo -e "${RED}Error: Config name invalid or exists.${NC}"; return; fi
     clear
     echo -e "${CYAN}--- Configuring IRAN server: ${name} ---${NC}"
     
-    # Collect all parameters based on screenshots
+    # Collect all parameters based on the screenshots provided by the user
     read -p "[+] Tunnel port: " BIND_PORT
     read -p "[+] Transport type (tcp/tcpmux/ws/wss/etc.): " TRANSPORT
     read -p "[+] Security Token: " TOKEN
@@ -112,23 +118,26 @@ generate_server_config() {
     local config="[server]\nbind_addr = \"0.0.0.0:${BIND_PORT}\"\ntransport = \"${TRANSPORT}\"\ntoken = \"${TOKEN}\"\nchannel_size = ${CHANNEL_SIZE}\nnodelay = ${NODELAY}\nheartbeat = ${HEARTBEAT}\naccept_udp = ${ACCEPT_UDP}\nsniffer = ${SNIFFER}\n"
     if [[ "$WEB_PORT" != "@" ]]; then config+="web_port = ${WEB_PORT}\n"; fi
     
-    # Handle TCP/TCPMUX port list
+    # Handle TCP/TCPMUX specific port list
     if [[ "$TRANSPORT" == "tcp" || "$TRANSPORT" == "tcpmux" ]]; then
         echo -e "\n${YELLOW}[*] Supported Port Formats:${NC}"
         echo "  - 443-600 | 80 | 1000:2000 | 443=1.1.1.1:5201"
         read -p "[+] Enter your ports (comma-separated): " PORTS
+        # Sanitize input: remove spaces and format for TOML array
         ports_formatted=$(echo "$PORTS" | tr -d ' ' | sed 's/,/","/g')
         config+="ports = [\"${ports_formatted}\"]\n"
     fi
     
+    # Save the config file and create the systemd service
     echo -e "$config" > "$CONFIG_DIR/${name}.toml"
     echo -e "${GREEN}Server config '${name}' created successfully.${NC}"
     create_service "$name"
 }
 
+# Generates the client-side configuration file
 generate_client_config() {
     local name=$1
-    if [[ -z "$name" || -f "$CONFIG_DIR/${name}.toml" ]]; then echo -e "${RED}Error: Config name invalid.${NC}"; return; fi
+    if [[ -z "$name" || -f "$CONFIG_DIR/${name}.toml" ]]; then echo -e "${RED}Error: Config name invalid or exists.${NC}"; return; fi
     clear
     echo -e "${CYAN}--- Configuring KHAREJ client: ${name} ---${NC}"
     
@@ -141,6 +150,7 @@ generate_client_config() {
     
     echo -e "$config" > "$CONFIG_DIR/${name}.toml"
 
+    # Loop to add multiple port forwarding rules
     echo -e "\n${PURPLE}--- Define Port Forwarding Rules ---${NC}"
     while true; do
         read -p "Add a port forwarding rule? [Y/n]: " ADD_PORT_CHOICE
@@ -155,6 +165,7 @@ generate_client_config() {
     create_service "$name"
 }
 
+# Creates a systemd service file for a given tunnel config
 create_service() {
     local name=$1
     local service_name="backhaul-${name}"
@@ -182,6 +193,7 @@ EOF
     fi
 }
 
+# Main menu for managing all existing tunnels
 tunnel_management_menu() {
     clear
     echo -e "${PURPLE}--- Tunnel management menu ---${NC}"
@@ -191,6 +203,7 @@ tunnel_management_menu() {
     echo "List of existing services to manage:"
     i=1
     for name in "${configs[@]}"; do
+        # Extracts port info for display
         port=$(grep -E 'bind_addr|remote_addr' "$CONFIG_DIR/${name}.toml" | head -n1 | cut -d':' -f2 | tr -d '"')
         echo "$i) $name, Tunnel port: $port"
         let i++
@@ -204,6 +217,7 @@ tunnel_management_menu() {
     manage_single_tunnel "$selected_name"
 }
 
+# Menu for managing a single, specific tunnel
 manage_single_tunnel() {
     local name=$1; local service_name="backhaul-${name}"
     while true; do
@@ -215,7 +229,9 @@ manage_single_tunnel() {
         read -p "Choose an option: " choice
         case $choice in
             1) systemctl start "$service_name" ;; 2) systemctl stop "$service_name" ;; 3) systemctl restart "$service_name" ;; 4) journalctl -u "$service_name" -f --no-pager ;;
-            5) nano "$CONFIG_DIR/${name}.toml" && systemctl restart "$service_name" ;;
+            5) 
+                if ! command -v nano &> /dev/null; then echo -e "${RED}Editor 'nano' not found. Please install it first.${NC}"; else nano "$CONFIG_DIR/${name}.toml" && systemctl restart "$service_name"; fi
+                ;;
             6) read -p "Are you sure? [y/N]: " DEL; if [[ "$DEL" =~ ^[Yy]$ ]]; then systemctl stop "$service_name" &>/dev/null; systemctl disable "$service_name" &>/dev/null; rm -f "/etc/systemd/system/${service_name}.service"; rm -f "$CONFIG_DIR/${name}.toml"; systemctl daemon-reload; echo -e "${GREEN}Tunnel deleted.${NC}"; return; fi ;;
             0) return ;; *) echo -e "${RED}Invalid option!${NC}" ;;
         esac
@@ -223,6 +239,7 @@ manage_single_tunnel() {
     done
 }
 
+# Uninstalls the Backhaul core and all related files
 remove_backhaul() {
     clear
     read -p "This will remove Backhaul Core and ALL configurations. Are you sure? [y/N]: " choice
@@ -236,6 +253,7 @@ remove_backhaul() {
     fi
 }
 
+# Displays the main menu of the script
 show_main_menu() {
     clear
     local core_v=$(get_core_version)
