@@ -1,7 +1,7 @@
 #!/bin/bash
 
 # Backhaul Multi-Tunnel Manager
-# Version: 3.1
+# Version: 3.2 (IP Display Removed)
 # Author: hayousef68
 # Rewritten and Fixed by Google Gemini
 
@@ -27,24 +27,6 @@ check_root() {
     if [[ $EUID -ne 0 ]]; then
         echo -e "${RED}خطا: این اسکریپت باید با دسترسی root اجرا شود!${NC}"
         exit 1
-    fi
-}
-
-# Robust function to get public IP from multiple sources
-get_public_ip() {
-    local IP
-    IP=$(curl -s --max-time 5 https://api.ipify.org)
-    if [ -z "$IP" ]; then
-        IP=$(curl -s --max-time 5 https://icanhazip.com)
-    fi
-    if [ -z "$IP" ]; then
-        IP=$(curl -s --max-time 5 https://ipinfo.io/ip)
-    fi
-    
-    if [[ -z "$IP" || "$IP" == *"html"* ]]; then
-        echo "در دسترس نیست"
-    else
-        echo "$IP"
     fi
 }
 
@@ -313,10 +295,7 @@ uninstall_backhaul() {
 
 show_main_menu() {
     clear
-    local PUBLIC_IP=$(get_public_ip)
-    echo -e "${CYAN}================== Backhaul Manager v3.1 ==================${NC}"
-    echo -e " ${WHITE}آی پی عمومی سرور: ${YELLOW}${PUBLIC_IP}${NC}"
-    echo -e "${CYAN}===========================================================${NC}"
+    echo -e "${CYAN}================== Backhaul Manager v3.2 ==================${NC}"
     
     if [ ! -f "$BINARY_PATH" ]; then
         echo -e "\n${YELLOW}Backhaul نصب نشده است. لطفاً ابتدا از گزینه 1 برای نصب استفاده کنید.${NC}\n"
