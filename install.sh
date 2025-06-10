@@ -1,14 +1,14 @@
 #!/bin/bash
 
 # Backhaul Ultimate Pro Manager
-# Version: 9.4 (Final with Smart Fallback Downloader)
+# Version: 9.5 (Final with Smart Fallback Downloader)
 # Author: hayousef68
 # Feature-Rich implementation by Google Gemini, combining all user requests.
 
 # --- Configuration ---
 CONFIG_DIR="/etc/backhaul/configs"
 BINARY_PATH="/usr/local/bin/backhaul"
-SCRIPT_VERSION="v9.4"
+SCRIPT_VERSION="v9.5"
 
 # --- Colors ---
 RED='\033[0;31m'
@@ -54,28 +54,49 @@ install_or_update() {
     if [ -z "$ARCH" ]; then echo -e "${RED}Error: Unsupported system architecture '$(uname -m)'.${NC}"; return; fi
     
     local FILE_NAME="backhaul.zip"
-    # **NEW**: Define Primary and Fallback URLs for robust download
     local PRIMARY_URL="https://github.com/proxystore/backhaul/releases/download/v1.1.2/backhaul_linux_${ARCH}.zip"
     local FALLBACK_URL="https://ghproxy.com/${PRIMARY_URL}"
     
-    cd /tmp
-
-    echo -e "${CYAN}Attempting to download from primary source...${NC}"
-    if ! curl -L --progress-bar -o "$FILE_NAME" "$PRIMARY_URL"; then
-        echo -e "\n${YELLOW}Primary download failed. Trying fallback source automatically...${NC}"
-        if ! curl -L --progress-bar -o "$FILE_NAME" "$FALLBACK_URL"; then
-            echo -e "\n${RED}Download failed from all sources!${NC}"
-            echo -e "${YELLOW}Please check your server's network connection and try again later.${NC}"
-            return
-        fi
-    fi
-    
-    # Ensure unzip is installed
+    # Ensure unzip is installed before anything else
     if ! command -v unzip &> /dev/null; then
         echo -e "${YELLOW}unzip is not installed. Installing...${NC}"
-        (apt-get update -y > /dev/null 2>&1 && apt-get install -y unzip > /dev/null 2>&1) || yum install -y unzip > /dev/null 2>&1
+        (apt-get update -y > /dev/null 2>&1 && apt-get install -y unzip > /dev/null 2>&1) || yum install -y unzip > /dev/null 2>&1 || { echo -e "${RED}Failed to install unzip. Please install it manually and try again.${NC}"; return; }
     fi
     
+    cd /tmp
+
+    # --- Smart Download Logic ---
+    local DOWNLOAD_SUCCESS=false
+
+    # 1. Try Primary URL
+    echo -e "${CYAN}Attempting download from primary source (GitHub)...${NC}"
+    curl -L --progress-bar -o "$FILE_NAME" "$PRIMARY_URL"
+    
+    # 2. Validate the downloaded file
+    if unzip -tq "$FILE_NAME" > /dev/null 2>&1; then
+        echo -e "${GREEN}Primary download successful and validated.${NC}"
+        DOWNLOAD_SUCCESS=true
+    else
+        echo -e "\n${YELLOW}Primary download was corrupted or failed. Trying fallback source automatically...${NC}"
+        rm -f "$FILE_NAME" # Delete corrupted file
+        # 3. Try Fallback URL
+        curl -L --progress-bar -o "$FILE_NAME" "$FALLBACK_URL"
+        # 4. Validate the fallback download
+        if unzip -tq "$FILE_NAME" > /dev/null 2>&1; then
+            echo -e "${GREEN}Fallback download successful and validated.${NC}"
+            DOWNLOAD_SUCCESS=true
+        fi
+    fi
+
+    # 5. Check final status
+    if [ "$DOWNLOAD_SUCCESS" = false ]; then
+        echo -e "\n${RED}Download failed from all sources!${NC}"
+        echo -e "${YELLOW}This indicates a persistent network issue. Please check your connection and firewall rules.${NC}"
+        rm -f "$FILE_NAME" # Cleanup
+        return
+    fi
+    
+    # --- Installation Logic ---
     unzip -o "$FILE_NAME"
     if [ ! -f "backhaul" ]; then
         echo -e "${RED}Error: 'backhaul' binary not found in the downloaded zip file.${NC}"
