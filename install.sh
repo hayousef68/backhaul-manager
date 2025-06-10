@@ -1,16 +1,17 @@
 #!/bin/bash
 
-# Backhaul Ultimate Pro Manager
-# Version: 18.0 (Final with Direct Binary Embedding)
-# Author: hayousef68
-# Feature-Rich implementation by Google Gemini, combining all user requests.
+# ==========================================================
+# Backhaul Auto Setup & Management Script
+# Version: 2.0
+# Inspired by the script provided by the user.
+# Enhanced and completed by Google Gemini.
+# ==========================================================
 
-# --- Configuration ---
-CONFIG_DIR="/etc/backhaul/configs"
+# --- Global Variables ---
+CONFIG_DIR="/etc/backhaul"
 BINARY_PATH="/usr/local/bin/backhaul"
-SCRIPT_VERSION="v18.0"
 
-# --- Colors ---
+# --- Colors for better UI ---
 RED='\033[0;31m'
 GREEN='\033[0;32m'
 YELLOW='\033[1;33m'
@@ -18,342 +19,358 @@ BLUE='\033[0;34m'
 PURPLE='\033[0;35m'
 CYAN='\033[0;36m'
 WHITE='\033[1;37m'
-NC='\033[0m'
+NC='\033[0m' # No Color
 
-# --- Embedded Binaries (Base64 Encoded Raw Binary) ---
-# This is the most robust offline installation method.
+# --- Functions ---
 
-# backhaul v1.1.2 for linux/amd64
-B64_AMD64="UEsDBAoAAAAAAACg8IVAAAAAAAAAAAAAAAAFAAAAYmFja2hhdWwvZ251LnhkcFVUCwADiniAY4l4
-gGNQSwMECgAAAAAAAKDwhUAAAAAAAAAAAAAAAAYAAABiYWNraGF1bC9VUEVYVVQLAAMKeIBjiXiA
-Y1BLAwQKAAAAAAAArPCFQQAAAAAAAAAAAAAAABUAAABiYWNraGF1bC9iYWNraGF1bC5leGVVVAsc
-AAp4gGOJeIBjiXgBUEsDBAoAAAAAAACo8IVAAAAAAAAAAAAAAAATAAAAYmFja2hhdWwvZ251Lnhk
-di5kZXBVVAsAAwp4gGOJeIBjUEsDBAoAAAAAAACw8IVAAAAAAAAAAAAAAAAMAAAAYmFja2hhdWwv
-Z251LnhkcFVUCwADiniAY4l4gGNQSwMECgAAAAAAALjwhUAAAAAAAAAAAAAAAAYAAABiYWNraGF1
-bC9VUEVYVVQLAAMKeIBjiXiAY1BLAwQKAAAAAAAAvPCFQQAAAAAAAAAAAAAAABUAAABiYWNraGF1
-bC9iYWNraGF1bC5leGVVVAscAAp4gGOJeIBjiXgBUEsDBAoAAAAAAADg8IVAAAAAAAAAAAAAAAAT
-AAAAYmFja2hhdWwvZ251Lnhkdi5kZXBVVAsAAwp4gGOJeIBjUEsBAgAAAAACgAAAAAAAoPCFQQAA
-AAAAAAAAFAAAAAAAAAAAAAAAAABiYWNraGF1bC9nbnUueGRwVVQLAAMKeIBjiXiAY1BLAQIAAAAA
-AoAAAAAAAOg8IVAAAAAAAAAAAAAAAAYAAAAAAAAAAAAAAABiYWNraGF1bC9VUEVYVVQLAAMKeIBj
-iXiAY1BLAQIAAAAACgAAAAAAAKzwhUEAAAAAAAAAAAAAABUAAAAAAAAAAAAAAABiYWNraGF1bC9i
-YWNraGF1bC5leGVVVAscAAp4gGOJeIBjiXgBUEsBAgAAAAACgAAAAAAArPCFQQAAAAAAAAAAAAAA
-ABMAAAAAAAAAAAAAAABiYWNraGF1bC9nbnUueGR2LmRlcFVUCwADiniAY4l4gGNQSwEC"
+# Clear the screen and show a header
+clear_screen() {
+    clear
+    echo -e "${CYAN}================================================${NC}" 
+    echo -e "${CYAN}            ${WHITE}Backhaul Auto Manager${CYAN}            ${NC}" 
+    echo -e "${CYAN}               ${YELLOW}v2.0 - English${CYAN}             ${NC}" 
+    echo -e "${CYAN}================================================${NC}" 
+    echo ""
+}
 
-# backhaul v1.1.2 for linux/arm64
-B64_ARM64="UEsDBAoAAAAAAACg8IVAAAAAAAAAAAAAAAAFAAAAYmFja2hhdWwvZ251LnhkcFVUCwADiniAY4l4
-gGNQSwMECgAAAAAAAKDwhUAAAAAAAAAAAAAAAAYAAABiYWNraGF1bC9VUEVYVVQLAAMKeIBjiXiA
-Y1BLAwQKAAAAAAAArPCFQQAAAAAAAAAAAAAAABUAAABiYWNraGF1bC9iYWNraGF1bC5leGVVVAsc
-AAp4gGOJeIBjiXgBUEsDBAoAAAAAAACo8IVAAAAAAAAAAAAAAAATAAAAYmFja2hhdWwvZ251Lnhk
-di5kZXBVVAsAAwp4gGOJeIBjUEsDBAoAAAAAAACw8IVAAAAAAAAAAAAAAAAMAAAAYmFja2hhdWwv
-Z251LnhkcFVUCwADiniAY4l4gGNQSwMECgAAAAAAALjwhUAAAAAAAAAAAAAAAAYAAABiYWNraGF1
-bC9VUEVYVVQLAAMKeIBjiXiAY1BLAwQKAAAAAAAAvPCFQQAAAAAAAAAAAAAAABUAAABiYWNraGF1
-bC9iYWNraGF1bC5leGVVVAscAAp4gGOJeIBjiXgBUEsDBAoAAAAAAADg8IVAAAAAAAAAAAAAAAAT
-AAAAYmFja2hhdWwvZ251Lnhkdi5kZXBVVAsAAwp4gGOJeIBjUEsBAgAAAAACgAAAAAAAoPCFQQAA
-AAAAAAAAFAAAAAAAAAAAAAAAAABiYWNraGF1bC9nbnUueGRwVVQLAAMKeIBjiXiAY1BLAQIAAAAA
-AoAAAAAAAOg8IVAAAAAAAAAAAAAAAAYAAAAAAAAAAAAAAABiYWNraGF1bC9VUEVYVVQLAAMKeIBj
-iXiAY1BLAQIAAAAACgAAAAAAAKzwhUEAAAAAAAAAAAAAABUAAAAAAAAAAAAAAABiYWNraGF1bC9i
-YWNraGF1bC5leGVVVAscAAp4gGOJeIBjiXgBUEsBAgAAAAACgAAAAAAArPCFQQAAAAAAAAAAAAAA
-ABMAAAAAAAAAAAAAAABiYWNraGF1bC9nbnUueGR2LmRlcFVUCwADiniAY4l4gGNQSwEC"
-
-# --- Helper Functions ---
-
+# Check if the script is run as root
 check_root() {
-    if [[ $EUID -ne 0 ]]; then
-        echo -e "${RED}Error: This script must be run as root.${NC}"
-        exit 1
+    if [[ $EUID -ne 0 ]]; then 
+       echo -e "${RED}Error: This script must be run as root!${NC}" 
+       echo -e "${YELLOW}Please run with 'sudo bash $0'${NC}"
+       exit 1
     fi
 }
 
-get_core_version() {
-    if [ -f "$BINARY_PATH" ]; then
-        $BINARY_PATH --version 2>/dev/null | awk '{print $2}' || echo "v1.1.2 (Advanced)"
-    else
-        echo "Not Installed"
-    fi
-}
-
+# Detect system architecture for downloading the correct binary
 detect_arch() {
-    case $(uname -m) in
-        x86_64 | amd64) echo "amd64" ;;
-        aarch64 | arm64) echo "arm64" ;;
-        *) echo "" ;;
+    case $(uname -m) in 
+        x86_64|amd64) echo "linux-amd64" ;; 
+        aarch64|arm64) echo "linux-arm64" ;; 
+        armv7l) echo "linux-armv7" ;; 
+        i386|i686) echo "linux-386" ;; 
+        *) echo "unsupported" ;; 
     esac
 }
 
-# --- Core Functions ---
-
-install_or_update() {
-    clear
-    echo -e "${BLUE}Installing/Updating Backhaul Core (Offline Mode)...${NC}"
+# Download and install the latest version of Backhaul
+install_backhaul() {
+    echo -e "${BLUE}Installing Backhaul...${NC}"
+    local ARCH
     ARCH=$(detect_arch)
-    
-    local B64_STRING
-    if [ "$ARCH" == "amd64" ]; then
-        B64_STRING=$B64_AMD64
-    elif [ "$ARCH" == "arm64" ]; then
-        B64_STRING=$B64_ARM64
-    else
-        echo -e "${RED}Error: Unsupported system architecture '$(uname -m)'.${NC}"
-        return
-    fi
-    
-    # Ensure necessary tools are installed
-    if ! command -v base64 &> /dev/null; then
-        echo -e "${YELLOW}Essential tool 'base64' is missing. Installing...${NC}"
-        (apt-get update -y && apt-get install -y coreutils) || (yum install -y coreutils)
+    if [ "$ARCH" = "unsupported" ]; then 
+        echo -e "${RED}Error: Unsupported system architecture!${NC}" 
+        return 1
     fi
 
-    echo -e "${CYAN}Extracting offline core for architecture: ${ARCH}...${NC}"
+    echo -e "${YELLOW}Getting latest version information from GitHub...${NC}"
+    LATEST_VERSION=$(curl -s https://api.github.com/repos/Musixal/Backhaul/releases/latest | grep '"tag_name"' | cut -d'"' -f4)
+    if [ -z "$LATEST_VERSION" ]; then
+        echo -e "${RED}Error: Failed to get version information from GitHub!${NC}"
+        return 1
+    fi
 
-    # **FIXED**: Simplified and robust extraction. Decode directly to the binary path.
-    if ! echo "$B64_STRING" | base64 --decode > "$BINARY_PATH"; then
-        echo -e "${RED}Failed to decode and write the binary! Check permissions for ${BINARY_PATH}.${NC}"
-        return
+    DOWNLOAD_URL="https://github.com/Musixal/Backhaul/releases/download/${LATEST_VERSION}/backhaul_${LATEST_VERSION#v}_${ARCH}.tar.gz"
+    echo -e "${YELLOW}Downloading Backhaul ${LATEST_VERSION}...${NC}"
+    cd /tmp
+    if ! wget -q --show-progress "$DOWNLOAD_URL" -O backhaul.tar.gz; then
+        echo -e "${RED}Error: Download failed! Please check your network or the URL.${NC}" 
+        return 1
     fi
-    
-    # Check if the binary was created and is not empty
-    if [ ! -s "$BINARY_PATH" ]; then
-        echo -e "${RED}Binary creation failed. The file is empty. Script might be corrupted.${NC}"
-        return
-    fi
-    
-    chmod +x "$BINARY_PATH"
+
+    tar -xzf backhaul.tar.gz
+    chmod +x backhaul
+    mv backhaul "$BINARY_PATH"
     mkdir -p "$CONFIG_DIR"
-    
-    echo -e "${GREEN}Backhaul Core v1.1.2 installed/updated successfully!${NC}"
+    rm backhaul.tar.gz
+    echo -e "${GREEN}Backhaul installed successfully!${NC}"
+    return 0
 }
 
-optimize_system() {
-    clear
-    echo -e "${BLUE}Optimizing system for tunnel stability (TCP Keepalive)...${NC}"
-    
-    cat > /etc/sysctl.d/99-backhaul-optimizations.conf << EOF
-# TCP Keepalive settings for stable tunnels
-net.ipv4.tcp_keepalive_time=60
-net.ipv4.tcp_keepalive_intvl=10
-net.ipv4.tcp_keepalive_probes=5
-EOF
+# Create a server configuration file
+create_server_config() {
+    clear_screen
+    echo -e "${PURPLE}--- Server Configuration ---${NC}" 
+    echo ""
 
-    sysctl -p /etc/sysctl.d/99-backhaul-optimizations.conf > /dev/null
-    echo -e "${GREEN}System TCP settings have been optimized for stability.${NC}"
-}
-
-configure_new_tunnel() {
-    clear
-    echo -e "${PURPLE}--- Configure a new tunnel ---${NC}"
-    echo -e "1) Configure for ${GREEN}IRAN${NC} server"
-    echo -e "2) Configure for ${CYAN}KHAREJ${NC} server"
-    read -p "Enter your choice: " ROLE_CHOICE
-
-    clear
-    local name
-    if [ "$ROLE_CHOICE" == "1" ]; then
-        read -p "Enter a name for this IRAN server config: " name
-        generate_server_config "$name"
-    elif [ "$ROLE_CHOICE" == "2" ]; then
-        read -p "Enter a name for this KHAREJ client config: " name
-        generate_client_config "$name"
-    else
-        echo -e "${RED}Invalid choice.${NC}"
-    fi
-}
-
-generate_server_config() {
-    local name=$1
-    if [[ -z "$name" || -f "$CONFIG_DIR/${name}.toml" ]]; then echo -e "${RED}Error: Config name invalid.${NC}"; return; fi
-    mkdir -p "$CONFIG_DIR"
-    clear
-    echo -e "${CYAN}--- Configuring IRAN server: ${WHITE}${name}${NC} ---${NC}"
-    
-    read -p "[+] Tunnel port: " BIND_PORT
-    read -p "[+] Transport type (tcp/tcpmux/ws/wss/wssmux): " TRANSPORT
-    read -p "[+] Security Token: " TOKEN
-    read -p "[+] Channel Size [2048]: " CHANNEL_SIZE; CHANNEL_SIZE=${CHANNEL_SIZE:-2048}
-    read -p "[-] Enable TCP_NODELAY (true/false) [true]: " NODELAY; NODELAY=${NODELAY:-true}
-    read -p "[-] Heartbeat (seconds) [40]: " HEARTBEAT; HEARTBEAT=${HEARTBEAT:-40}
-    read -p "[-] Accept UDP (true/false) [false]: " ACCEPT_UDP; ACCEPT_UDP=${ACCEPT_UDP:-false}
-    read -p "[-] Enable Sniffer (true/false) [false]: " SNIFFER; SNIFFER=${SNIFFER:-false}
-    read -p "[-] Enter Web Port (@ to disable) [@]: " WEB_PORT; WEB_PORT=${WEB_PORT:-@}
-    read -p "[-] Enable Proxy Protocol (for Cloudflare) [false]: " PROXY; PROXY=${PROXY:-false}
-
-    local config="[server]\nbind_addr = \"0.0.0.0:${BIND_PORT}\"\ntransport = \"${TRANSPORT}\"\ntoken = \"${TOKEN}\"\nchannel_size = ${CHANNEL_SIZE}\nnodelay = ${NODELAY}\nheartbeat = ${HEARTBEAT}\naccept_udp = ${ACCEPT_UDP}\nsniffer = ${SNIFFER}\nproxy_protocol = ${PROXY}\n"
-    if [[ "$WEB_PORT" != "@" ]]; then config+="web_port = ${WEB_PORT}\n"; fi
-    
-    if [[ "$TRANSPORT" == "tcpmux" || "$TRANSPORT" == "wssmux" ]]; then
-        read -p "[-] MUX Connections [128]: " MUX_CON; MUX_CON=${MUX_CON:-128}
-        config+="mux_con = ${MUX_CON}\n"
-    fi
-    
-    if [[ "$TRANSPORT" == "tcp" || "$TRANSPORT" == "tcpmux" ]]; then
-        echo -e "\n${YELLOW}[*] Supported Port Formats:${NC}"
-        echo "  - 443-600 | 80 | 1000:2000 | 443=1.1.1.1:5201"
-        read -p "[+] Enter your ports (comma-separated): " PORTS
-        ports_formatted=$(echo "$PORTS" | tr -d ' ' | sed 's/,/","/g')
-        config+="ports = [\"${ports_formatted}\"]\n"
-    fi
-
-    echo -e "$config" > "$CONFIG_DIR/${name}.toml"
-    echo -e "${GREEN}Server config '${name}' created successfully.${NC}"
-    create_service "$name"
-}
-
-generate_client_config() {
-    local name=$1
-    if [[ -z "$name" || -f "$CONFIG_DIR/${name}.toml" ]]; then echo -e "${RED}Error: Config name invalid.${NC}"; return; fi
-    mkdir -p "$CONFIG_DIR"
-    clear
-    echo -e "${CYAN}--- Configuring KHAREJ client: ${WHITE}${name}${NC} ---${NC}"
-    
-    read -p "[+] Remote server address (IP:PORT): " REMOTE_ADDR
-    read -p "[+] Transport type (must match server): " TRANSPORT
-    read -p "[+] Security Token: " TOKEN
-    read -p "[-] Enable TCP_NODELAY (true/false) [true]: " NODELAY; NODELAY=${NODELAY:-true}
-    read -p "[-] Retry Interval on failure (seconds) [3]: " RETRY; RETRY=${RETRY:-3}
-
-    local config="[client]\nremote_addr = \"${REMOTE_ADDR}\"\ntransport = \"${TRANSPORT}\"\ntoken = \"${TOKEN}\"\nnodelay = ${NODELAY}\nretry_interval = ${RETRY}\n"
-    
-    if [[ "$TRANSPORT" == "tcpmux" || "$TRANSPORT" == "wssmux" ]]; then
-        read -p "[-] Connection Pool Size [128]: " CONN_POOL; CONN_POOL=${CONN_POOL:-128}
-        config+="connection_pool = ${CONN_POOL}\n"
-    fi
-    
-    echo -e "$config" > "$CONFIG_DIR/${name}.toml"
-
-    echo -e "\n${PURPLE}--- Define Port Forwarding Rules ---${NC}"
-    while true; do
-        read -p "Add a port forwarding rule? [Y/n]: " ADD_PORT_CHOICE
-        if [[ "$ADD_PORT_CHOICE" =~ ^[Nn]$ ]]; then break; fi
-        read -p "  Local address to listen on (e.g., 0.0.0.0:8080): " LOCAL_ADDR
-        read -p "  Remote address on the server (e.g., 127.0.0.1:22): " TARGET_ADDR
-        { echo ""; echo "[[client.services]]"; echo "local_addr = \"${LOCAL_ADDR}\""; echo "remote_addr = \"${TARGET_ADDR}\""; } >> "$CONFIG_DIR/${name}.toml"
-        echo -e "${GREEN}Rule: ${LOCAL_ADDR} -> ${TARGET_ADDR} added.${NC}"
+    echo -e "${CYAN}Select server location:${NC}"
+    select server_location_choice in "Iran Server (Foreign will connect to this)" "Foreign Server (Iran will connect to this)"; do 
+        case $server_location_choice in
+            "Iran Server (Foreign will connect to this)")
+                SERVER_LOCATION="iran"
+                DEFAULT_PORT=443
+                break
+                ;;
+            "Foreign Server (Iran will connect to this)")
+                SERVER_LOCATION="foreign"
+                DEFAULT_PORT=7777
+                break
+                ;;
+        esac
     done
-    
-    echo -e "${GREEN}Client config '${name}' created successfully.${NC}"
-    create_service "$name"
+
+    read -p "Enter server port [Default: ${DEFAULT_PORT}]: " SERVER_PORT 
+    SERVER_PORT=${SERVER_PORT:-$DEFAULT_PORT} 
+    read -p "Enter connection password [Default: mypassword]: " PASSWORD 
+    PASSWORD=${PASSWORD:-mypassword} 
+
+    echo -e "${CYAN}Select transport protocol:${NC}"
+    select protocol_choice in "TCP (Fast, simple)" "WebSocket (WS)" "WebSocket Secure (WSS) - Recommended" "GRPC"; do 
+        case $protocol_choice in
+            "TCP (Fast, simple)") TRANSPORT="tcp"; break ;; 
+            "WebSocket (WS)") TRANSPORT="ws"; break ;; 
+            "WebSocket Secure (WSS) - Recommended") TRANSPORT="wss"; break ;; 
+            "GRPC") TRANSPORT="grpc"; break ;; 
+        esac
+    done
+
+    HEARTBEAT_CONFIG=""
+    SNI_CONFIG=""
+    if [ "$SERVER_LOCATION" = "iran" ]; then 
+        read -p "Enable heartbeat for stability? [y/N]: " ENABLE_HEARTBEAT 
+        if [[ $ENABLE_HEARTBEAT =~ ^[Yy]$ ]]; then 
+            HEARTBEAT_CONFIG="heartbeat = 40" 
+        fi
+        if [ "$TRANSPORT" = "wss" ]; then 
+            read -p "Enter SNI/Domain for WSS [Default: cloudflare.com]: " SNI_DOMAIN 
+            SNI_DOMAIN=${SNI_DOMAIN:-cloudflare.com} 
+            SNI_CONFIG="sni = \"$SNI_DOMAIN\"" 
+        fi
+    fi
+
+    cat > "$CONFIG_DIR/server.toml" << EOF
+[server]
+bind_addr = "0.0.0.0:${SERVER_PORT}"
+transport = "${TRANSPORT}"
+token = "${PASSWORD}"
+keepalive_period = 75
+nodelay = true
+$([ -n "$HEARTBEAT_CONFIG" ] && echo "$HEARTBEAT_CONFIG")
+$([ -n "$SNI_CONFIG" ] && echo "$SNI_CONFIG")
+[server.channel_size]
+queue_size = 2048
+EOF
+    echo -e "\n${GREEN}Server config created successfully!${NC}"
+    echo -e "${BLUE}Config file: ${CONFIG_DIR}/server.toml${NC}"
+    echo -e "${YELLOW}--- Server Details ---${NC}" 
+    echo -e "  Location:  ${SERVER_LOCATION^}" 
+    echo -e "  Port:      $SERVER_PORT" 
+    echo -e "  Transport: $TRANSPORT" 
+    echo -e "  Password:  $PASSWORD" 
 }
 
+# Create a client configuration file
+create_client_config() {
+    clear_screen
+    echo -e "${PURPLE}--- Client Configuration ---${NC}" 
+    echo ""
+
+    echo -e "${CYAN}Select client location:${NC}" 
+    select client_location_choice in "Iran Client (connects to foreign server)" "Foreign Client (connects to Iran server)"; do 
+        case $client_location_choice in
+            "Iran Client (connects to foreign server)") CLIENT_LOCATION="iran"; break ;; 
+            "Foreign Client (connects to Iran server)") CLIENT_LOCATION="foreign"; break ;; 
+        esac
+    done
+
+    read -p "Enter the Server's public IP address: " SERVER_IP 
+    if [ -z "$SERVER_IP" ]; then 
+        echo -e "${RED}Error: Server IP is required!${NC}" 
+        return 1
+    fi
+
+    if [ "$CLIENT_LOCATION" = "iran" ]; then 
+        DEFAULT_SERVER_PORT=7777; DEFAULT_LOCAL_PORT=8080; DEFAULT_TARGET_IP="127.0.0.1"; DEFAULT_TARGET_PORT="22"; 
+    else
+        DEFAULT_SERVER_PORT=443; DEFAULT_LOCAL_PORT=22; DEFAULT_TARGET_IP="127.0.0.1"; DEFAULT_TARGET_PORT="8080"; 
+    fi
+
+    read -p "Enter server port [Default: $DEFAULT_SERVER_PORT]: " SERVER_PORT 
+    SERVER_PORT=${SERVER_PORT:-$DEFAULT_SERVER_PORT} 
+    read -p "Enter connection password [Default: mypassword]: " PASSWORD 
+    PASSWORD=${PASSWORD:-mypassword} 
+    read -p "Enter local port for this machine to listen on [Default: $DEFAULT_LOCAL_PORT]: " LOCAL_PORT 
+    LOCAL_PORT=${LOCAL_PORT:-$DEFAULT_LOCAL_PORT} 
+
+    echo -e "${YELLOW}Enter the target service details on the OTHER server:${NC}" 
+    read -p "Enter target IP address (usually 127.0.0.1) [Default: $DEFAULT_TARGET_IP]: " TARGET_IP 
+    TARGET_IP=${TARGET_IP:-$DEFAULT_TARGET_IP} 
+    read -p "Enter target port (e.g., 22 for SSH) [Default: $DEFAULT_TARGET_PORT]: " TARGET_PORT 
+    TARGET_PORT=${TARGET_PORT:-$DEFAULT_TARGET_PORT} 
+    TARGET_ADDR="${TARGET_IP}:${TARGET_PORT}" 
+
+    echo -e "${CYAN}Select transport protocol:${NC}"
+    select protocol_choice in "TCP" "WebSocket (WS)" "WebSocket Secure (WSS)" "GRPC"; do 
+        case $protocol_choice in
+            "TCP") TRANSPORT="tcp"; break ;; 
+            "WebSocket (WS)") TRANSPORT="ws"; break ;; 
+            "WebSocket Secure (WSS)") TRANSPORT="wss"; break ;; 
+            "GRPC") TRANSPORT="grpc"; break ;; 
+        esac
+    done
+
+    HEARTBEAT_CONFIG=""
+    SNI_CONFIG=""
+    if [ "$CLIENT_LOCATION" = "iran" ]; then 
+        read -p "Enable heartbeat? [y/N]: " ENABLE_HEARTBEAT 
+        if [[ $ENABLE_HEARTBEAT =~ ^[Yy]$ ]]; then 
+            HEARTBEAT_CONFIG="heartbeat = 40" 
+        fi
+        if [ "$TRANSPORT" = "wss" ]; then 
+            read -p "Enter SNI/Domain for WSS [Default: cloudflare.com]: " SNI_DOMAIN 
+            SNI_DOMAIN=${SNI_DOMAIN:-cloudflare.com} 
+            SNI_CONFIG="sni = \"$SNI_DOMAIN\"" 
+        fi
+    fi
+
+    cat > "$CONFIG_DIR/client.toml" << EOF
+[client]
+remote_addr = "${SERVER_IP}:${SERVER_PORT}"
+transport = "${TRANSPORT}"
+token = "${PASSWORD}"
+keepalive_period = 75
+retry_interval = 1
+nodelay = true
+$([ -n "$HEARTBEAT_CONFIG" ] && echo "$HEARTBEAT_CONFIG")
+$([ -n "$SNI_CONFIG" ] && echo "$SNI_CONFIG")
+[[client.services]]
+local_addr = "0.0.0.0:${LOCAL_PORT}"
+remote_addr = "${TARGET_ADDR}"
+[client.channel_size]
+queue_size = 2048
+EOF
+    echo -e "\n${GREEN}Client config created successfully!${NC}"
+    echo -e "${BLUE}Config file: ${CONFIG_DIR}/client.toml${NC}"
+    echo -e "${YELLOW}--- Client Details ---${NC}" 
+    echo -e "  Location:              ${CLIENT_LOCATION^}" 
+    echo -e "  Server:                $SERVER_IP:$SERVER_PORT" 
+    echo -e "  Local Port (Listening): $LOCAL_PORT" 
+    echo -e "  Target Service:        $TARGET_ADDR" 
+    echo -e "  Transport:             $TRANSPORT" 
+}
+
+# Create a systemd service
 create_service() {
-    local name=$1
-    local service_name="backhaul-${name}"
-    cat > "/etc/systemd/system/${service_name}.service" << EOF
+    echo -e "${BLUE}Creating systemd service...${NC}"
+    select service_choice in "Server" "Client"; do 
+        case $service_choice in
+            "Server")
+                CONFIG_FILE="server.toml"; SERVICE_NAME="backhaul-server"; DESCRIPTION="Backhaul Server"; break ;; 
+            "Client")
+                CONFIG_FILE="client.toml"; SERVICE_NAME="backhaul-client"; DESCRIPTION="Backhaul Client"; break ;; 
+        esac
+    done
+
+    if [ ! -f "$CONFIG_DIR/$CONFIG_FILE" ]; then
+        echo -e "${RED}Error: Config file '$CONFIG_DIR/$CONFIG_FILE' not found! Please create it first.${NC}"
+        return 1
+    fi
+
+    cat > "/etc/systemd/system/${SERVICE_NAME}.service" << EOF
 [Unit]
-Description=Backhaul Tunnel (${name})
+Description=${DESCRIPTION}
 After=network.target
+StartLimitIntervalSec=0
 [Service]
 Type=simple
-User=root
-ExecStart=${BINARY_PATH} -c ${CONFIG_DIR}/${name}.toml
 Restart=always
 RestartSec=3
-LimitNOFILE=1048576
+User=root
+ExecStart=${BINARY_PATH} -c ${CONFIG_DIR}/${CONFIG_FILE}
 [Install]
 WantedBy=multi-user.target
 EOF
-    systemctl daemon-reload
-    systemctl enable "${service_name}" &>/dev/null
-    echo -e "${CYAN}Service '${service_name}' created and enabled.${NC}"
-    read -p "Start the service now? [Y/n]: " START_CHOICE
-    if [[ ! "$START_CHOICE" =~ ^[Nn]$ ]]; then
-        systemctl start "${service_name}"
-        echo -e "${GREEN}Service started.${NC}"
-    fi
+
+    systemctl daemon-reload 
+    systemctl enable "$SERVICE_NAME" 
+    echo -e "${GREEN}Service ${SERVICE_NAME} created and enabled successfully!${NC}" 
+    echo -e "${YELLOW}You can start it now from the 'Manage Service' menu.${NC}" 
 }
 
-tunnel_management_menu() {
-    clear
-    echo -e "${PURPLE}--- Tunnel management menu ---${NC}"
-    mapfile -t configs < <(ls -1 "$CONFIG_DIR" 2>/dev/null | sed 's/\.toml$//')
-    if [ ${#configs[@]} -eq 0 ]; then echo -e "${YELLOW}No tunnels found.${NC}"; return; fi
+# Manage existing services
+manage_service() {
+    clear_screen
+    echo -e "${PURPLE}--- Service Management ---${NC}"
     
-    echo "List of existing services to manage:"
-    i=1
-    for name in "${configs[@]}"; do
-        port=$(grep -E 'bind_addr|remote_addr' "$CONFIG_DIR/${name}.toml" | head -n1 | cut -d':' -f2 | tr -d '"')
-        echo -e "$i) ${WHITE}${name}${NC}, Tunnel port: ${YELLOW}${port}${NC}"
-        let i++
+    SERVICES=$(ls /etc/systemd/system/backhaul-*.service 2>/dev/null | xargs -n 1 basename | sed 's/\.service//') 
+    if [ -z "$SERVICES" ]; then 
+        echo -e "${RED}No Backhaul services found! Please create a service first.${NC}" 
+        return
+    fi
+    
+    echo -e "${CYAN}Select a service to manage:${NC}"
+    select SERVICE in $SERVICES; do
+        if [ -n "$SERVICE" ]; then
+            break
+        fi
     done
-    
-    read -p "Enter your choice (0 to return): " choice
-    if ! [[ "$choice" =~ ^[0-9]+$ ]] || [ "$choice" -eq 0 ]; then return; fi
-    
-    local selected_name=${configs[$((choice-1))]}
-    if [ -z "$selected_name" ]; then echo -e "${RED}Invalid selection.${NC}"; return; fi
-    manage_single_tunnel "$selected_name"
-}
 
-manage_single_tunnel() {
-    local name=$1; local service_name="backhaul-${name}"
-    while true; do
-        clear
-        echo -e "${PURPLE}--- Managing Tunnel: ${WHITE}${name}${NC} ---"
-        systemctl is-active --quiet "$service_name" && echo -e "Status: ${GREEN}Active${NC}" || echo -e "Status: ${RED}Inactive${NC}"
-        echo "-----------------------------------"
-        echo "1) Start"; echo "2) Stop"; echo "3) Restart"; echo "4) View Logs"; echo "5) Edit Config"; echo -e "6) ${RED}Delete Tunnel${NC}"; echo "0) Back"
-        read -p "Choose an option: " choice
-        case $choice in
-            1) systemctl start "$service_name" ;; 2) systemctl stop "$service_name" ;; 3) systemctl restart "$service_name" ;; 4) journalctl -u "$service_name" -f --no-pager ;;
-            5) nano "$CONFIG_DIR/${name}.toml" && systemctl restart "$service_name" ;;
-            6) read -p "Are you sure? [y/N]: " DEL; if [[ "$DEL" =~ ^[Yy]$ ]]; then systemctl stop "$service_name" &>/dev/null; systemctl disable "$service_name" &>/dev/null; rm -f "/etc/systemd/system/${service_name}.service"; rm -f "$CONFIG_DIR/${name}.toml"; systemctl daemon-reload; echo -e "${GREEN}Tunnel deleted.${NC}"; return; fi ;;
-            0) return ;; *) echo -e "${RED}Invalid option!${NC}" ;;
-        esac
-        read -p $'\nPress [Enter] to continue...'
-    done
-}
+    echo -e "${CYAN}Selected service: ${WHITE}${SERVICE}${NC}"
+    echo "1) Start Service"
+    echo "2) Stop Service"
+    echo "3) Restart Service"
+    echo "4) View Status"
+    echo "5) View Logs (real-time)"
+    read -p "Enter your choice: " action
 
-remove_backhaul() {
-    clear
-    read -p "This will remove Backhaul Core and ALL configurations. Are you sure? [y/N]: " choice
-    if [[ "$choice" =~ ^[Yy]$ ]]; then
-        systemctl stop backhaul-* &>/dev/null; systemctl disable backhaul-* &>/dev/null
-        rm -f /etc/systemd/system/backhaul-*.service; systemctl daemon-reload
-        rm -rf "/etc/backhaul"; rm -f "$BINARY_PATH"
-        echo -e "${GREEN}Backhaul has been completely removed.${NC}"
-    else
-        echo -e "${YELLOW}Removal cancelled.${NC}"
-    fi
-}
-
-show_main_menu() {
-    clear
-    local core_v=$(get_core_version)
-    echo -e "${CYAN}Script Version : ${WHITE}${SCRIPT_VERSION}${NC}"
-    echo -e "${CYAN}Core Version   : ${WHITE}${core_v}${NC}"
-    echo -e "-------------------------------------------"
-    if [[ "$core_v" == "Not Installed" ]]; then
-      echo -e "${YELLOW}Backhaul Core: Not Installed${NC}"
-    else
-      echo -e "${CYAN}Backhaul Core: ${GREEN}Installed${NC}"
-    fi
-    echo -e "-------------------------------------------"
-    echo -e "1. Configure a new tunnel"
-    echo -e "2. Tunnel management menu"
-    echo -e "3. ${YELLOW}Optimize System for Stability${NC}"
-    echo -e "4. Update & Install Backhaul Core"
-    echo -e "5. Remove Backhaul Core"
-    echo -e "0. Exit"
-    echo -e "-------------------------------------------"
-}
-
-# --- Main Loop ---
-check_root
-
-while true; do
-    show_main_menu
-    read -p "Enter your choice [0-5]: " main_choice
-
-    local should_pause=true
-    case $main_choice in
-        1) configure_new_tunnel ;;
-        2) tunnel_management_menu; should_pause=false ;;
-        3) optimize_system ;;
-        4) install_or_update ;;
-        5) remove_backhaul ;;
-        0) exit 0 ;;
-        *) echo -e "${RED}Invalid choice!${NC}";;
+    case $action in
+        1) systemctl start "$SERVICE" && echo -e "${GREEN}Service started.${NC}" ;;
+        2) systemctl stop "$SERVICE" && echo -e "${RED}Service stopped.${NC}" ;;
+        3) systemctl restart "$SERVICE" && echo -e "${YELLOW}Service restarted.${NC}" ;;
+        4) systemctl status "$SERVICE" ;;
+        5) journalctl -u "$SERVICE" -f ;;
+        *) echo -e "${RED}Invalid choice.${NC}" ;;
     esac
-    
-    if [ "$should_pause" = true ]; then
-        read -p $'\nPress [Enter] to return to main menu...'
+}
+
+# Uninstall function
+uninstall_backhaul() {
+    echo -e "${RED}--- Uninstall Backhaul ---${NC}"
+    read -p "Are you sure you want to completely remove Backhaul and all its configs? [y/N]: " CONFIRM
+    if [[ $CONFIRM =~ ^[Yy]$ ]]; then
+        systemctl stop backhaul-server backhaul-client &>/dev/null
+        systemctl disable backhaul-server backhaul-client &>/dev/null
+        rm -f /etc/systemd/system/backhaul-*.service
+        rm -f "$BINARY_PATH"
+        rm -rf "$CONFIG_DIR"
+        systemctl daemon-reload
+        echo -e "${GREEN}Backhaul has been completely uninstalled.${NC}"
+    else
+        echo -e "${YELLOW}Uninstall cancelled.${NC}"
     fi
-done
+}
+
+
+# --- Main Menu ---
+main_menu() {
+    while true; do
+        clear_screen
+        echo -e "${PURPLE}Main Menu:${NC}"
+        echo "1) Install/Update Backhaul"
+        echo "2) Create Server Config"
+        echo "3) Create Client Config"
+        echo "4) Create Systemd Service"
+        echo "5) Manage Service"
+        echo "6) Uninstall Backhaul"
+        echo "0) Exit"
+        echo ""
+        read -p "Enter your choice: " choice
+
+        case $choice in
+            1) install_backhaul ;;
+            2) create_server_config ;;
+            3) create_client_config ;;
+            4) create_service ;;
+            5) manage_service ;;
+            6) uninstall_backhaul ;;
+            0) exit 0 ;;
+            *) echo -e "${RED}Invalid choice, please try again.${NC}" ;;
+        esac
+        echo -e "\n${YELLOW}Press Enter to return to the main menu...${NC}"
+        read -n 1
+    done
+}
+
+# --- Script Start ---
+check_root
+main_menu
