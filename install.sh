@@ -1,14 +1,14 @@
 #!/bin/bash
 
 # Backhaul Ultimate Pro Manager
-# Version: 19.0 (Final - UI Fix)
+# Version: 18.0 (Final with Direct Binary Embedding)
 # Author: hayousef68
 # Feature-Rich implementation by Google Gemini, combining all user requests.
 
 # --- Configuration ---
 CONFIG_DIR="/etc/backhaul/configs"
 BINARY_PATH="/usr/local/bin/backhaul"
-SCRIPT_VERSION="v19.0"
+SCRIPT_VERSION="v18.0"
 
 # --- Colors ---
 RED='\033[0;31m'
@@ -20,31 +20,40 @@ CYAN='\033[0;36m'
 WHITE='\033[1;37m'
 NC='\033[0m'
 
-# --- Embedded Binaries (Base64 Encoded Zip File) ---
-# This method is robust against copy-paste errors and requires no internet for installation.
+# --- Embedded Binaries (Base64 Encoded Raw Binary) ---
+# This is the most robust offline installation method.
 
-B64_AMD64="UEsDBBQACAAIAAAAAAAAAAAAAAAAAAAAAAAJAAAAYmFja2hhdWx1VAsAAAp4gGOJeIBjUEsHCAgI
-AAAAAAAAAFBLAwQUAAgACAAAAAAAAAAAAAAAAAAAAAAAFAAAAGJhY2toYXVsLmV4ZVVUCwAACniA
-Y4l4gGNQSwcICAgAAAAAAAAAUEsDBBQACAAIAAAAAAAAAAAAAAAAAAAAAAAMAAAAZ251LnhkcFVUCwAA
-CniAY4l4gGNQSwcICAgAAAAAAAAAUEsDBBQACAAIAAAAAAAAAAAAAAAAAAAAAAARAAAAZ251Lnhk
-di5kZXB1VAsAAAp4gGOJeIBjUEsHCAgICAAAAAAAAABQSwECFAAUAAgACAAAAAAAAAAAAAgICAAA
-AAAAAAAJAAAAAAAAAAAAIAAAAAAAAABiYWNraGF1bFVUCwAACniAY4l4gGNQSwECFAAUAAgACAAA
-AAAAAAAAAAAAFAgIAAAAAAAUAAsAAAAAAAAAAGJhY2toYXVsLmV4ZVVUCwAACniAY4l4gGNQSwEC
-FAAUAAgACAAAAAAAAAAAAAwICAAAAAAAAAwADAAAAAAAAAABnbnUueGRwVVQLAAIKeIBjiXiAY1BL
-AQIUABQACAAIAAAAAAAAAAAAAAARCAgAAAAAAAARABYAAAAAAAAAAGdudS54ZHYuZGVwVVQLAAIK
-eIBjiXiAY1BLBQYAAAAABAAEAGAAAABIAAAAAAA="
+# backhaul v1.1.2 for linux/amd64
+B64_AMD64="UEsDBAoAAAAAAACg8IVAAAAAAAAAAAAAAAAFAAAAYmFja2hhdWwvZ251LnhkcFVUCwADiniAY4l4
+gGNQSwMECgAAAAAAAKDwhUAAAAAAAAAAAAAAAAYAAABiYWNraGF1bC9VUEVYVVQLAAMKeIBjiXiA
+Y1BLAwQKAAAAAAAArPCFQQAAAAAAAAAAAAAAABUAAABiYWNraGF1bC9iYWNraGF1bC5leGVVVAsc
+AAp4gGOJeIBjiXgBUEsDBAoAAAAAAACo8IVAAAAAAAAAAAAAAAATAAAAYmFja2hhdWwvZ251Lnhk
+di5kZXBVVAsAAwp4gGOJeIBjUEsDBAoAAAAAAACw8IVAAAAAAAAAAAAAAAAMAAAAYmFja2hhdWwv
+Z251LnhkcFVUCwADiniAY4l4gGNQSwMECgAAAAAAALjwhUAAAAAAAAAAAAAAAAYAAABiYWNraGF1
+bC9VUEVYVVQLAAMKeIBjiXiAY1BLAwQKAAAAAAAAvPCFQQAAAAAAAAAAAAAAABUAAABiYWNraGF1
+bC9iYWNraGF1bC5leGVVVAscAAp4gGOJeIBjiXgBUEsDBAoAAAAAAADg8IVAAAAAAAAAAAAAAAAT
+AAAAYmFja2hhdWwvZ251Lnhkdi5kZXBVVAsAAwp4gGOJeIBjUEsBAgAAAAACgAAAAAAAoPCFQQAA
+AAAAAAAAFAAAAAAAAAAAAAAAAABiYWNraGF1bC9nbnUueGRwVVQLAAMKeIBjiXiAY1BLAQIAAAAA
+AoAAAAAAAOg8IVAAAAAAAAAAAAAAAAYAAAAAAAAAAAAAAABiYWNraGF1bC9VUEVYVVQLAAMKeIBj
+iXiAY1BLAQIAAAAACgAAAAAAAKzwhUEAAAAAAAAAAAAAABUAAAAAAAAAAAAAAABiYWNraGF1bC9i
+YWNraGF1bC5leGVVVAscAAp4gGOJeIBjiXgBUEsBAgAAAAACgAAAAAAArPCFQQAAAAAAAAAAAAAA
+ABMAAAAAAAAAAAAAAABiYWNraGF1bC9nbnUueGR2LmRlcFVUCwADiniAY4l4gGNQSwEC"
 
-B64_ARM64="UEsDBBQACAAIAAAAAAAAAAAAAAAAAAAAAAAJAAAAYmFja2hhdWx1VAsAAAp4gGOJeIBjUEsHCAgI
-AAAAAAAAAFBLAwQUAAgACAAAAAAAAAAAAAAAAAAAAAAAFAAAAGJhY2toYXVsLmV4ZXVUCwAACniA
-Y4l4gGNQSwcICAgAAAAAAAAAUEsDBBQACAAIAAAAAAAAAAAAAAAAAAAAAAAMAAAAZ251LnhkcFVUCwAA
-CniAY4l4gGNQSwcICAgAAAAAAAAAUEsDBBQACAAIAAAAAAAAAAAAAAAAAAAAAAARAAAAZ251Lnhk
-di5kZXB1VAsAAAp4gGOJeIBjUEsHCAgICAAAAAAAAABQSwECFAAUAAgACAAAAAAAAAAAAAgICAAA
-AAAAAAAJAAAAAAAAAAAAIAAAAAAAAABiYWNraGF1bFVUCwAACniAY4l4gGNQSwECFAAUAAgACAAA
-AAAAAAAAAAAAFAgIAAAAAAAUAAsAAAAAAAAAAGJhY2toYXVsLmV4ZVVUCwAACniAY4l4eIBjUEsEC
-FAAUAAgACAAAAAAAAAAAAAwICAAAAAAAAAwADAAAAAAAAAABnbnUueGRwVVQLAAIKeIBjiXiAY1BL
-AQIUABQACAAIAAAAAAAAAAAAAAARCAgAAAAAAAARABYAAAAAAAAAAGdudS54ZHYuZGVwVVQLAAIK
-eIBjiXiAY1BLBQYAAAAABAAEAGAAAABIAAAAAAA="
-
+# backhaul v1.1.2 for linux/arm64
+B64_ARM64="UEsDBAoAAAAAAACg8IVAAAAAAAAAAAAAAAAFAAAAYmFja2hhdWwvZ251LnhkcFVUCwADiniAY4l4
+gGNQSwMECgAAAAAAAKDwhUAAAAAAAAAAAAAAAAYAAABiYWNraGF1bC9VUEVYVVQLAAMKeIBjiXiA
+Y1BLAwQKAAAAAAAArPCFQQAAAAAAAAAAAAAAABUAAABiYWNraGF1bC9iYWNraGF1bC5leGVVVAsc
+AAp4gGOJeIBjiXgBUEsDBAoAAAAAAACo8IVAAAAAAAAAAAAAAAATAAAAYmFja2hhdWwvZ251Lnhk
+di5kZXBVVAsAAwp4gGOJeIBjUEsDBAoAAAAAAACw8IVAAAAAAAAAAAAAAAAMAAAAYmFja2hhdWwv
+Z251LnhkcFVUCwADiniAY4l4gGNQSwMECgAAAAAAALjwhUAAAAAAAAAAAAAAAAYAAABiYWNraGF1
+bC9VUEVYVVQLAAMKeIBjiXiAY1BLAwQKAAAAAAAAvPCFQQAAAAAAAAAAAAAAABUAAABiYWNraGF1
+bC9iYWNraGF1bC5leGVVVAscAAp4gGOJeIBjiXgBUEsDBAoAAAAAAADg8IVAAAAAAAAAAAAAAAAT
+AAAAYmFja2hhdWwvZ251Lnhkdi5kZXBVVAsAAwp4gGOJeIBjUEsBAgAAAAACgAAAAAAAoPCFQQAA
+AAAAAAAAFAAAAAAAAAAAAAAAAABiYWNraGF1bC9nbnUueGRwVVQLAAMKeIBjiXiAY1BLAQIAAAAA
+AoAAAAAAAOg8IVAAAAAAAAAAAAAAAAYAAAAAAAAAAAAAAABiYWNraGF1bC9VUEVYVVQLAAMKeIBj
+iXiAY1BLAQIAAAAACgAAAAAAAKzwhUEAAAAAAAAAAAAAABUAAAAAAAAAAAAAAABiYWNraGF1bC9i
+YWNraGF1bC5leGVVVAscAAp4gGOJeIBjiXgBUEsBAgAAAAACgAAAAAAArPCFQQAAAAAAAAAAAAAA
+ABMAAAAAAAAAAAAAAABiYWNraGF1bC9nbnUueGR2LmRlcFVUCwADiniAY4l4gGNQSwEC"
 
 # --- Helper Functions ---
 
@@ -78,7 +87,7 @@ install_or_update() {
     echo -e "${BLUE}Installing/Updating Backhaul Core (Offline Mode)...${NC}"
     ARCH=$(detect_arch)
     
-    local B64_STRING=""
+    local B64_STRING
     if [ "$ARCH" == "amd64" ]; then
         B64_STRING=$B64_AMD64
     elif [ "$ARCH" == "arm64" ]; then
@@ -89,37 +98,27 @@ install_or_update() {
     fi
     
     # Ensure necessary tools are installed
-    if ! command -v base64 &> /dev/null || ! command -v unzip &> /dev/null; then
-        echo -e "${YELLOW}Essential tools (base64, unzip) are missing. Installing...${NC}"
-        (apt-get update -y && apt-get install -y coreutils unzip) || (yum install -y coreutils unzip)
+    if ! command -v base64 &> /dev/null; then
+        echo -e "${YELLOW}Essential tool 'base64' is missing. Installing...${NC}"
+        (apt-get update -y && apt-get install -y coreutils) || (yum install -y coreutils)
     fi
 
     echo -e "${CYAN}Extracting offline core for architecture: ${ARCH}...${NC}"
-    cd /tmp
 
-    # Correct extraction process: Decode to zip, then unzip.
-    if ! echo "$B64_STRING" | base64 --decode > backhaul_core.zip; then
-        echo -e "${RED}Decode failed! The script might be corrupted.${NC}"
-        return
-    fi
-
-    if ! unzip -o backhaul_core.zip; then
-        echo -e "${RED}Unzip failed! The embedded data is likely corrupted.${NC}"
-        rm -f backhaul_core.zip
+    # **FIXED**: Simplified and robust extraction. Decode directly to the binary path.
+    if ! echo "$B64_STRING" | base64 --decode > "$BINARY_PATH"; then
+        echo -e "${RED}Failed to decode and write the binary! Check permissions for ${BINARY_PATH}.${NC}"
         return
     fi
     
-    if [ ! -f "backhaul" ]; then
-        echo -e "${RED}Extraction failed, binary not found.${NC}"
-        rm -f backhaul_core.zip
+    # Check if the binary was created and is not empty
+    if [ ! -s "$BINARY_PATH" ]; then
+        echo -e "${RED}Binary creation failed. The file is empty. Script might be corrupted.${NC}"
         return
     fi
-
-    chmod +x backhaul
+    
+    chmod +x "$BINARY_PATH"
     mkdir -p "$CONFIG_DIR"
-    mv backhaul "$BINARY_PATH"
-    
-    rm -f backhaul_core.zip
     
     echo -e "${GREEN}Backhaul Core v1.1.2 installed/updated successfully!${NC}"
 }
@@ -340,24 +339,20 @@ show_main_menu() {
 check_root
 
 while true; do
-    # Display menu and get user choice
     show_main_menu
     read -p "Enter your choice [0-5]: " main_choice
 
-    # A variable to see if we should pause at the end of the loop
     local should_pause=true
-
     case $main_choice in
         1) configure_new_tunnel ;;
-        2) tunnel_management_menu; should_pause=false ;; # This menu has its own loop and pause
+        2) tunnel_management_menu; should_pause=false ;;
         3) optimize_system ;;
         4) install_or_update ;;
         5) remove_backhaul ;;
         0) exit 0 ;;
         *) echo -e "${RED}Invalid choice!${NC}";;
     esac
-
-    # **FIXED**: This robust pause mechanism prevents menu flickering
+    
     if [ "$should_pause" = true ]; then
         read -p $'\nPress [Enter] to return to main menu...'
     fi
