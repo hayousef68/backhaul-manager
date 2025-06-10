@@ -17,4 +17,4 @@
 
 ## 🚀 نصب سریع
 ```bash
-curl -sSL https://raw.githubusercontent.com/hayousef68/backhaul-manager/main/install.sh | sudo bash
+wget -O install.sh https://raw.githubusercontent.com/hayousef68/backhaul-manager/main/install.sh && sudo bash install.sh
