@@ -1,14 +1,14 @@
 #!/bin/bash
 
 # Backhaul Ultimate Pro Manager
-# Version: 8.0 (Final Combined Version)
+# Version: 8.1 (Final Reviewed Version)
 # Author: hayousef68
 # Feature-Rich implementation by Google Gemini, combining all user requests.
 
 # --- Configuration ---
 CONFIG_DIR="/etc/backhaul/configs"
 BINARY_PATH="/usr/local/bin/backhaul"
-SCRIPT_VERSION="v8.0"
+SCRIPT_VERSION="v8.1"
 
 # --- Colors ---
 RED='\033[0;31m'
@@ -96,6 +96,7 @@ generate_server_config() {
     clear
     echo -e "${CYAN}--- Configuring IRAN server: ${WHITE}${name}${NC} ---${NC}"
     
+    # Collect all parameters based on screenshots
     read -p "[+] Tunnel port: " BIND_PORT
     read -p "[+] Transport type (tcp/tcpmux/ws/wss/wssmux): " TRANSPORT
     read -p "[+] Security Token: " TOKEN
@@ -105,8 +106,10 @@ generate_server_config() {
     read -p "[-] Accept UDP (true/false) [false]: " ACCEPT_UDP; ACCEPT_UDP=${ACCEPT_UDP:-false}
     read -p "[-] Enable Sniffer (true/false) [false]: " SNIFFER; SNIFFER=${SNIFFER:-false}
     read -p "[-] Enter Web Port (@ to disable) [@]: " WEB_PORT; WEB_PORT=${WEB_PORT:-@}
-    
-    local config="[server]\nbind_addr = \"0.0.0.0:${BIND_PORT}\"\ntransport = \"${TRANSPORT}\"\ntoken = \"${TOKEN}\"\nchannel_size = ${CHANNEL_SIZE}\nnodelay = ${NODELAY}\nheartbeat = ${HEARTBEAT}\naccept_udp = ${ACCEPT_UDP}\nsniffer = ${SNIFFER}\n"
+    read -p "[-] Enable Proxy Protocol (for Cloudflare) [false]: " PROXY; PROXY=${PROXY:-false}
+
+
+    local config="[server]\nbind_addr = \"0.0.0.0:${BIND_PORT}\"\ntransport = \"${TRANSPORT}\"\ntoken = \"${TOKEN}\"\nchannel_size = ${CHANNEL_SIZE}\nnodelay = ${NODELAY}\nheartbeat = ${HEARTBEAT}\naccept_udp = ${ACCEPT_UDP}\nsniffer = ${SNIFFER}\nproxy_protocol = ${PROXY}\n"
     if [[ "$WEB_PORT" != "@" ]]; then config+="web_port = ${WEB_PORT}\n"; fi
     
     # MUX settings
