@@ -1,11 +1,16 @@
 #!/bin/bash
 
-# Backhaul Auto Setup Script
-# Version: 2.3 (Auto-Arch Detection for v0.6.5)
+# Backhaul Multi-Tunnel Manager
+# Version: 3.0
 # Author: hayousef68
-# Improvements by Google Gemini
+# Rewritten by Google Gemini
 
-# --- Colors for better UI ---
+# --- Configuration ---
+CONFIG_DIR="/etc/backhaul/configs"
+BINARY_PATH="/usr/local/bin/backhaul"
+LATEST_VERSION_URL="https://api.github.com/repos/Musixal/Backhaul/releases/latest"
+
+# --- Colors ---
 RED='\033[0;31m'
 GREEN='\033[0;32m'
 YELLOW='\033[1;33m'
@@ -15,48 +20,54 @@ CYAN='\033[0;36m'
 WHITE='\033[1;37m'
 NC='\033[0m'
 
-# --- Global variables ---
-CONFIG_DIR="/etc/backhaul"
-BINARY_PATH="/usr/local/bin/backhaul"
+# --- Helper Functions ---
 
-# --- Functions ---
-
+# Function to check if running as root
 check_root() {
     if [[ $EUID -ne 0 ]]; then
-        echo -e "${RED}Error: This script must be run as root!${NC}"
+        echo -e "${RED}خطا: این اسکریپت باید با دسترسی root اجرا شود!${NC}"
         exit 1
     fi
 }
 
-# This function now intelligently installs the correct version for the system architecture.
-install_backhaul() {
-    echo -e "${BLUE}Installing Backhaul v0.6.5 with Auto Architecture Detection...${NC}"
-    
-    # Detect architecture and set the correct download suffix
-    local ARCH_SUFFIX
-    case $(uname -m) in
-        x86_64)
-            ARCH_SUFFIX="amd64"
-            ;;
-        aarch64 | arm64)
-            ARCH_SUFFIX="arm64"
-            ;;
-        *)
-            echo -e "${RED}Error: Unsupported system architecture '$(uname -m)'!${NC}"
-            echo -e "${YELLOW}This script only supports amd64 (x86_64) and arm64.${NC}"
-            return 1
-            ;;
-    esac
-    
-    echo -e "${CYAN}Detected Architecture: $(uname -m) -> Using '${ARCH_SUFFIX}' package.${NC}"
+# Function to get public IP
+get_public_ip() {
+    curl -s --max-time 5 ifconfig.me || curl -s --max-time 5 ipinfo.io/ip || echo "Not Available"
+}
 
-    # Construct the download URL based on detected architecture
-    local DOWNLOAD_URL="https://github.com/Musixal/Backhaul/releases/download/v0.6.5/backhaul_linux_${ARCH_SUFFIX}.tar.gz"
+# Function to detect system architecture
+detect_arch() {
+    case $(uname -m) in
+        x86_64 | amd64) echo "x86_64-unknown-linux-musl" ;;
+        aarch64 | arm64) echo "aarch64-unknown-linux-musl" ;;
+        *) echo "" ;;
+    esac
+}
+
+# --- Core Functions ---
+
+install_backhaul() {
+    clear
+    echo -e "${BLUE}در حال نصب یا به‌روزرسانی Backhaul...${NC}"
+    ARCH=$(detect_arch)
+    if [ -z "$ARCH" ]; then
+        echo -e "${RED}خطا: معماری سیستم شما '$(uname -m)' پشتیبانی نمی‌شود.${NC}"
+        return 1
+    fi
+
+    echo -e "${YELLOW}در حال دریافت اطلاعات آخرین نسخه...${NC}"
+    LATEST_TAG=$(curl -s $LATEST_VERSION_URL | grep '"tag_name"' | cut -d'"' -f4)
+    if [ -z "$LATEST_TAG" ]; then
+        echo -e "${RED}خطا: دریافت اطلاعات نسخه از GitHub ناموفق بود.${NC}"
+        return 1
+    fi
+
+    DOWNLOAD_URL="https://github.com/Musixal/Backhaul/releases/download/${LATEST_TAG}/backhaul-${LATEST_TAG}-${ARCH}.tar.gz"
     
-    echo -e "${YELLOW}Downloading from ${DOWNLOAD_URL}...${NC}"
+    echo -e "${CYAN}در حال دانلود نسخه ${LATEST_TAG} برای معماری ${ARCH}...${NC}"
     cd /tmp
     if ! wget -q --show-progress "$DOWNLOAD_URL" -O backhaul.tar.gz; then
-        echo -e "${RED}Error: Download failed! Please check the URL or your network connection.${NC}"
+        echo -e "${RED}خطا در دانلود! لطفاً اتصال اینترنت خود را بررسی کنید.${NC}"
         return 1
     fi
     
@@ -66,186 +77,279 @@ install_backhaul() {
     
     mkdir -p "$CONFIG_DIR"
     rm -f /tmp/backhaul.tar.gz
-    echo -e "${GREEN}Backhaul v0.6.5 for ${ARCH_SUFFIX} installed successfully!${NC}"
+    echo -e "${GREEN}Backhaul ${LATEST_TAG} با موفقیت نصب شد!${NC}"
 }
 
-
-create_config() {
-    local ROLE=$1
+create_tunnel_config() {
     clear
-    if [ "$ROLE" == "server" ]; then
-        echo -e "${PURPLE}Server Configuration${NC}"
-        read -p "Enter server port [443]: " SERVER_PORT; SERVER_PORT=${SERVER_PORT:-443}
-        read -p "Enter connection password [mypassword]: " PASSWORD; PASSWORD=${PASSWORD:-mypassword}
-        
-        cat > "$CONFIG_DIR/server.toml" << EOF
+    echo -e "${PURPLE}--- ساخت کانفیگ تانل جدید ---${NC}"
+    read -p "یک نام منحصر به فرد برای این تانل وارد کنید (مثال: vps1_ssh): " TUNNEL_NAME
+    if [ -z "$TUNNEL_NAME" ] || [ -f "$CONFIG_DIR/${TUNNEL_NAME}.toml" ]; then
+        echo -e "${RED}خطا: نام تانل نمی‌تواند خالی باشد یا از قبل وجود داشته باشد.${NC}"
+        return 1
+    fi
+
+    echo "نقش این سرور چیست؟"
+    echo "1) سرور (مقصد)"
+    echo "2) کلاینت (مبدا)"
+    read -p "انتخاب کنید [1-2]: " ROLE_CHOICE
+
+    if [ "$ROLE_CHOICE" == "1" ]; then
+        create_server_config "$TUNNEL_NAME"
+    elif [ "$ROLE_CHOICE" == "2" ]; then
+        create_client_config "$TUNNEL_NAME"
+    else
+        echo -e "${RED}انتخاب نامعتبر است.${NC}"
+        return 1
+    fi
+}
+
+create_server_config() {
+    local name=$1
+    echo -e "\n${CYAN}--- تنظیمات سرور: ${name} ---${NC}"
+    read -p "پورتی که سرور روی آن شنود کند [443]: " BIND_PORT; BIND_PORT=${BIND_PORT:-443}
+    read -p "یک رمز عبور (token) برای اتصال وارد کنید [my_secret_pass]: " TOKEN; TOKEN=${TOKEN:-my_secret_pass}
+    read -p "آیا Nodelay فعال باشد؟ (برای کاهش تاخیر) [y/N]: " NODELAY_CHOICE
+    NODELAY_STATUS=$( [[ "$NODELAY_CHOICE" =~ ^[Yy]$ ]] && echo "true" || echo "false" )
+
+    cat > "$CONFIG_DIR/${name}.toml" << EOF
+# Server Config: ${name}
 [server]
-bind_addr = "0.0.0.0:${SERVER_PORT}"
+bind_addr = "0.0.0.0:${BIND_PORT}"
 transport = "wss"
-token = "${PASSWORD}"
+token = "${TOKEN}"
+nodelay = ${NODELAY_STATUS}
 keepalive_period = 75
-nodelay = true
 heartbeat = 40
 sni = "cloudflare.com"
 
 [server.channel_size]
 queue_size = 2048
 EOF
-        echo -e "${GREEN}Server config created: $CONFIG_DIR/server.toml${NC}"
-    else
-        echo -e "${PURPLE}Client Configuration${NC}"
-        read -p "Enter server IP address: " SERVER_IP
-        read -p "Enter server port [443]: " SERVER_PORT; SERVER_PORT=${SERVER_PORT:-443}
-        read -p "Enter connection password [mypassword]: " PASSWORD; PASSWORD=${PASSWORD:-mypassword}
-        read -p "Enter local port to listen on [8080]: " LOCAL_PORT; LOCAL_PORT=${LOCAL_PORT:-8080}
-        read -p "Enter target port on the other server (e.g., 22 for SSH) [22]: " TARGET_PORT; TARGET_PORT=${TARGET_PORT:-22}
-        
-        cat > "$CONFIG_DIR/client.toml" << EOF
-[client]
-remote_addr = "${SERVER_IP}:${SERVER_PORT}"
-transport = "wss"
-token = "${PASSWORD}"
-keepalive_period = 75
-retry_interval = 1
-nodelay = true
-heartbeat = 40
-sni = "cloudflare.com"
-
-[[client.services]]
-local_addr = "0.0.0.0:${LOCAL_PORT}"
-remote_addr = "127.0.0.1:${TARGET_PORT}"
-
-[client.channel_size]
-queue_size = 2048
-EOF
-        echo -e "${GREEN}Client config created: $CONFIG_DIR/client.toml${NC}"
-    fi
+    echo -e "${GREEN}کانفیگ سرور '${name}' با موفقیت ساخته شد.${NC}"
+    create_service "$name"
 }
 
-manage_service() {
-    clear
-    echo "Select service type to create/manage:"
-    echo "1) Server"
-    echo "2) Client"
-    read -p "Enter your choice: " SERVICE_CHOICE
+create_client_config() {
+    local name=$1
+    echo -e "\n${CYAN}--- تنظیمات کلاینت: ${name} ---${NC}"
+    read -p "آدرس IP سرور مقصد: " SERVER_IP
+    read -p "پورت سرور مقصد [443]: " SERVER_PORT; SERVER_PORT=${SERVER_PORT:-443}
+    read -p "رمز عبور (token) سرور: " TOKEN
+    read -p "آیا Nodelay فعال باشد؟ (برای کاهش تاخیر) [y/N]: " NODELAY_CHOICE
+    NODELAY_STATUS=$( [[ "$NODELAY_CHOICE" =~ ^[Yy]$ ]] && echo "true" || echo "false" )
 
-    case $SERVICE_CHOICE in
-        1) CONFIG_FILE="server.toml"; SERVICE_NAME="backhaul-server" ;;
-        2) CONFIG_FILE="client.toml"; SERVICE_NAME="backhaul-client" ;;
-        *) echo -e "${RED}Invalid selection!${NC}"; return ;;
-    esac
+    {
+        echo "# Client Config: ${name}"
+        echo "[client]"
+        echo "remote_addr = \"${SERVER_IP}:${SERVER_PORT}\""
+        echo "transport = \"wss\""
+        echo "token = \"${TOKEN}\""
+        echo "nodelay = ${NODELAY_STATUS}"
+        echo "keepalive_period = 75"
+        echo "retry_interval = 3"
+        echo "heartbeat = 40"
+        echo "sni = \"cloudflare.com\""
+        echo ""
+        echo "[client.channel_size]"
+        echo "queue_size = 2048"
+        echo ""
+    } > "$CONFIG_DIR/${name}.toml"
 
-    if [ ! -f "$CONFIG_DIR/$CONFIG_FILE" ]; then
-        echo -e "${RED}Config file $CONFIG_DIR/$CONFIG_FILE not found! Please create it first.${NC}"
-        return
-    fi
+    echo -e "\n${PURPLE}--- تعریف پورت‌های تانل ---${NC}"
+    while true; do
+        read -p "آیا می‌خواهید یک پورت جدید برای تانل تعریف کنید؟ [y/N]: " ADD_PORT_CHOICE
+        if [[ ! "$ADD_PORT_CHOICE" =~ ^[Yy]$ ]]; then
+            break
+        fi
+        read -p "  پورت محلی (روی این ماشین) که شنود شود (مثال: 8080): " LOCAL_PORT
+        read -p "  آدرس و پورت مقصد (روی سرور دیگر) (مثال: 127.0.0.1:22): " REMOTE_ADDR
+
+        {
+            echo "[[client.services]]"
+            echo "local_addr = \"0.0.0.0:${LOCAL_PORT}\""
+            echo "remote_addr = \"${REMOTE_ADDR}\""
+            echo ""
+        } >> "$CONFIG_DIR/${name}.toml"
+        echo -e "${GREEN}پورت ${LOCAL_PORT} به مقصد ${REMOTE_ADDR} اضافه شد.${NC}"
+    done
     
-    cat > "/etc/systemd/system/${SERVICE_NAME}.service" << EOF
+    echo -e "${GREEN}کانفیگ کلاینت '${name}' با موفقیت ساخته شد.${NC}"
+    create_service "$name"
+}
+
+create_service() {
+    local name=$1
+    local service_name="backhaul-${name}"
+    
+    cat > "/etc/systemd/system/${service_name}.service" << EOF
 [Unit]
-Description=Backhaul Tunnel Service (${SERVICE_NAME})
+Description=Backhaul Tunnel Service (${name})
 After=network.target
-StartLimitIntervalSec=0
 [Service]
 Type=simple
+User=root
+ExecStart=${BINARY_PATH} -c ${CONFIG_DIR}/${name}.toml
 Restart=always
 RestartSec=3
-User=root
-ExecStart=${BINARY_PATH} -c ${CONFIG_DIR}/${CONFIG_FILE}
+LimitNOFILE=1048576
 [Install]
 WantedBy=multi-user.target
 EOF
     systemctl daemon-reload
-    systemctl enable "${SERVICE_NAME}"
-    systemctl restart "${SERVICE_NAME}"
-    echo -e "${GREEN}Service ${SERVICE_NAME} created and started successfully!${NC}"
+    systemctl enable "${service_name}" >/dev/null 2>&1
+    echo -e "${CYAN}سرویس '${service_name}' ساخته و فعال شد.${NC}"
+    read -p "آیا می‌خواهید سرویس را هم اکنون اجرا کنید؟ [y/N]: " START_CHOICE
+    if [[ "$START_CHOICE" =~ ^[Yy]$ ]]; then
+        systemctl start "${service_name}"
+        echo -e "${GREEN}سرویس اجرا شد.${NC}"
+    fi
+}
+
+manage_tunnels() {
+    clear
+    echo -e "${PURPLE}--- مدیریت تانل‌ها ---${NC}"
+    mapfile -t configs < <(ls -1 "$CONFIG_DIR" | sed 's/\.toml$//')
+    if [ ${#configs[@]} -eq 0 ]; then
+        echo -e "${YELLOW}هیچ تانلی برای مدیریت یافت نشد.${NC}"
+        return
+    fi
+    
+    select TUNNEL_NAME in "${configs[@]}" "بازگشت"; do
+        if [ "$TUNNEL_NAME" == "بازگشت" ]; then
+            break
+        elif [ -n "$TUNNEL_NAME" ]; then
+            manage_single_tunnel "$TUNNEL_NAME"
+            break
+        else
+            echo -e "${RED}انتخاب نامعتبر.${NC}"
+        fi
+    done
+}
+
+manage_single_tunnel() {
+    local name=$1
+    local service_name="backhaul-${name}"
+    while true; do
+        clear
+        echo -e "${PURPLE}--- مدیریت تانل: ${WHITE}${name}${NC} ---"
+        systemctl is-active --quiet "$service_name" && echo -e "وضعیت: ${GREEN}فعال${NC}" || echo -e "وضعیت: ${RED}غیرفعال${NC}"
+        echo "-----------------------------------"
+        echo "1) شروع سرویس (Start)"
+        echo "2) توقف سرویس (Stop)"
+        echo "3) راه‌اندازی مجدد (Restart)"
+        echo "4) مشاهده لاگ‌ها (Logs)"
+        echo "5) مشاهده فایل کانفیگ"
+        echo "6) ${RED}حذف کامل تانل${NC}"
+        echo "7) بازگشت به منوی اصلی"
+        read -p "انتخاب کنید: " choice
+        
+        case $choice in
+            1) systemctl start "$service_name" && echo -e "${GREEN}سرویس شروع شد.${NC}" ;;
+            2) systemctl stop "$service_name" && echo -e "${GREEN}سرویس متوقف شد.${NC}" ;;
+            3) systemctl restart "$service_name" && echo -e "${GREEN}سرویس مجددا راه‌اندازی شد.${NC}" ;;
+            4) journalctl -u "$service_name" -f --no-pager ;;
+            5) less "$CONFIG_DIR/${name}.toml" ;;
+            6)
+                read -p "آیا از حذف کامل تانل '${name}' مطمئن هستید؟ [y/N]: " DEL_CHOICE
+                if [[ "$DEL_CHOICE" =~ ^[Yy]$ ]]; then
+                    systemctl stop "$service_name"
+                    systemctl disable "$service_name"
+                    rm -f "/etc/systemd/system/${service_name}.service"
+                    rm -f "$CONFIG_DIR/${name}.toml"
+                    systemctl daemon-reload
+                    echo -e "${GREEN}تانل '${name}' به طور کامل حذف شد.${NC}"
+                    return
+                fi
+                ;;
+            7) return ;;
+            *) echo -e "${RED}انتخاب نامعتبر!${NC}" ;;
+        esac
+        read -n 1 -s -r -p "برای ادامه کلیدی را فشار دهید..."
+    done
 }
 
 uninstall_backhaul() {
     clear
-    echo -e "${RED}This will stop and remove all backhaul services, configs, and the binary.${NC}"
-    read -p "Are you sure? Enter 'yes' to confirm: " CONFIRM
-    if [ "$CONFIRM" != "yes" ]; then
-        echo -e "${YELLOW}Uninstallation cancelled.${NC}"
+    read -p "آیا از حذف کامل Backhaul و تمام تانل‌ها مطمئن هستید؟ [y/N]: " choice
+    if [[ ! "$choice" =~ ^[Yy]$ ]]; then
+        echo -e "${YELLOW}عملیات لغو شد.${NC}"
         return
     fi
-    systemctl stop backhaul-server backhaul-client &>/dev/null
-    systemctl disable backhaul-server backhaul-client &>/dev/null
-    rm -f /etc/systemd/system/backhaul-*.service
-    systemctl daemon-reload
-    rm -rf "$CONFIG_DIR"
+    
+    echo "در حال توقف و حذف تمام سرویس‌های Backhaul..."
+    mapfile -t services < <(ls -1 /etc/systemd/system/backhaul-*.service)
+    if [ ${#services[@]} -gt 0 ]; then
+        for s in "${services[@]}"; do
+            systemctl stop "$(basename "$s")"
+            systemctl disable "$(basename "$s")"
+        done
+        rm -f /etc/systemd/system/backhaul-*.service
+        systemctl daemon-reload
+    fi
+    
+    echo "در حال حذف فایل‌های کانفیگ و فایل اجرایی..."
+    rm -rf "/etc/backhaul"
     rm -f "$BINARY_PATH"
-    echo -e "${GREEN}Backhaul has been completely uninstalled.${NC}"
+    
+    echo -e "${GREEN}Backhaul به طور کامل حذف شد.${NC}"
 }
 
-show_status() {
+show_main_menu() {
     clear
-    echo -e "${CYAN}=========== Backhaul Manager v2.3 (Auto-Arch Detect) ===========${NC}"
+    PUBLIC_IP=$(get_public_ip)
+    echo -e "${CYAN}================== Backhaul Manager v3.0 ==================${NC}"
+    echo -e " ${WHITE}آی پی عمومی سرور: ${YELLOW}${PUBLIC_IP}${NC}"
+    echo -e "${CYAN}===========================================================${NC}"
     
-    if [ -f "$BINARY_PATH" ]; then
-        local VERSION=$($BINARY_PATH -V 2>/dev/null || echo "v0.6.5")
-        echo -e " ${GREEN}●${NC} Backhaul: ${WHITE}Installed (${VERSION})${NC}"
+    if [ ! -f "$BINARY_PATH" ]; then
+        echo -e "\n${YELLOW}Backhaul نصب نشده است. لطفاً ابتدا از گزینه 1 برای نصب استفاده کنید.${NC}\n"
     else
-        echo -e " ${RED}●${NC} Backhaul: ${YELLOW}Not Installed${NC}"
-        echo -e "${CYAN}=================================================================${NC}"
-        return
+        echo -e "\n${PURPLE}--- لیست تانل‌های موجود ---${NC}"
+        mapfile -t configs < <(ls -1 "$CONFIG_DIR" 2>/dev/null | sed 's/\.toml$//')
+        if [ ${#configs[@]} -eq 0 ]; then
+            echo -e "${YELLOW}هیچ تانلی یافت نشد. برای شروع یک تانل جدید بسازید.${NC}"
+        else
+            for name in "${configs[@]}"; do
+                if systemctl is-active --quiet "backhaul-${name}"; then
+                    STATUS="[${GREEN}فعال${NC}]"
+                else
+                    STATUS="[${RED}غیرفعال${NC}]"
+                fi
+                ROLE=$(grep -q '\[server\]' "$CONFIG_DIR/${name}.toml" && echo "سرور" || echo "کلاینت")
+                DETAILS=""
+                if [ "$ROLE" == "سرور" ]; then
+                    DETAILS=$(grep 'bind_addr' "$CONFIG_DIR/${name}.toml" | cut -d'"' -f2)
+                else
+                    DETAILS=$(grep 'remote_addr' "$CONFIG_DIR/${name}.toml" | head -n1 | cut -d'"' -f2)
+                fi
+                printf " %-10s %-20s ${WHITE}(%s) -> %s${NC}\n" "$STATUS" "$name" "$ROLE" "$DETAILS"
+            done
+        fi
     fi
-
-    if systemctl is-active --quiet backhaul-server; then
-        local PORT=$(grep 'bind_addr' $CONFIG_DIR/server.toml | cut -d'"' -f2)
-        echo -e " ${GREEN}●${NC} Server Service: ${WHITE}Active | Listening on: ${PORT}${NC}"
-    else
-        echo -e " ${RED}●${NC} Server Service: ${YELLOW}Inactive${NC}"
-    fi
-
-    if systemctl is-active --quiet backhaul-client; then
-        local PORT=$(grep 'local_addr' $CONFIG_DIR/client.toml | cut -d'"' -f2)
-        local TARGET_SERVER=$(grep 'remote_addr' $CONFIG_DIR/client.toml | head -n 1 | cut -d'"' -f2)
-        echo -e " ${GREEN}●${NC} Client Service: ${WHITE}Active | Port ${PORT} -> ${TARGET_SERVER}${NC}"
-    else
-        echo -e " ${RED}●${NC} Client Service: ${YELLOW}Inactive${NC}"
-    fi
-    echo -e "${CYAN}=================================================================${NC}"
+    
+    echo -e "\n${CYAN}--- منوی اصلی ---${NC}"
+    echo "1) نصب یا به‌روزرسانی Backhaul"
+    echo "2) ساخت تانل جدید"
+    echo "3) مدیریت تانل‌های موجود"
+    echo "4) ${RED}حذف کامل Backhaul${NC}"
+    echo "0) خروج"
+    echo ""
 }
 
-main_menu() {
-    show_status
-    echo ""
-    echo -e "${PURPLE}Select an option:${NC}"
-    echo " 1) Install Backhaul (v0.6.5, Auto-Arch)"
-    echo " 2) Configure Server"
-    echo " 3) Configure Client"
-    echo " 4) Create & Start Service"
-    echo ""
-    echo -e "${CYAN}--- Management ---${NC}"
-    echo " 5) Restart Services"
-    echo " 6) Stop Services"
-    echo " 7) View Server Logs"
-    echo " 8) View Client Logs"
-    echo " 9) Uninstall Backhaul"
-    echo " 0) Exit"
-    echo ""
-    read -p "Enter your choice [0-9]: " choice
-    
-    case $choice in
-        1) install_backhaul ;;
-        2) create_config "server" ;;
-        3) create_config "client" ;;
-        4) manage_service ;;
-        5) systemctl restart backhaul-server backhaul-client &>/dev/null && echo -e "${GREEN}Services restarted.${NC}" || echo -e "${YELLOW}No active services to restart.${NC}" ;;
-        6) systemctl stop backhaul-server backhaul-client &>/dev/null && echo -e "${GREEN}Services stopped.${NC}" || echo -e "${YELLOW}No active services to stop.${NC}" ;;
-        7) journalctl -u backhaul-server -f --no-pager ;;
-        8) journalctl -u backhaul-client -f --no-pager ;;
-        9) uninstall_backhaul ;;
-        0) exit 0 ;;
-        *) echo -e "${RED}Invalid choice!${NC}" ;;
-    esac
-    
-    echo ""
-    read -n 1 -s -r -p "Press any key to return to the main menu..."
-}
-
-# --- Script execution ---
+# --- Main Loop ---
 check_root
 while true; do
-    main_menu
+    show_main_menu
+    read -p "لطفا یک گزینه را انتخاب کنید: " main_choice
+    case $main_choice in
+        1) install_backhaul ;;
+        2) create_tunnel_config ;;
+        3) manage_tunnels ;;
+        4) uninstall_backhaul ;;
+        0) exit 0 ;;
+        *) echo -e "${RED}انتخاب نامعتبر!${NC}" ;;
+    esac
+    read -n 1 -s -r -p $'\nبرای بازگشت به منو، یک کلید را فشار دهید...'
 done
+
