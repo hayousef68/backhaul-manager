@@ -36,7 +36,7 @@ display_logo() {
 }
 
 display_server_info() {
-    echo -e "\e[93m═════════════════════════════════════════════\e[0m"
+    echo -e "\e[93mâ•گâ•گâ•گâ•گâ•گâ•گâ•گâ•گâ•گâ•گâ•گâ•گâ•گâ•گâ•گâ•گâ•گâ•گâ•گâ•گâ•گâ•گâ•گâ•گâ•گâ•گâ•گâ•گâ•گâ•گâ•گâ•گâ•گâ•گâ•گâ•گâ•گâ•گâ•گâ•گâ•گâ•گâ•گâ•گâ•گ\e[0m"
     local SERVER_COUNTRY; SERVER_COUNTRY=$(curl -sS "http://ip-api.com/line?fields=country")
     local SERVER_ISP; SERVER_ISP=$(curl -sS "http://ip-api.com/line?fields=isp")
     colorize cyan "Location:   ${SERVER_COUNTRY:-N/A}"
@@ -49,7 +49,7 @@ display_core_status() {
     else
         colorize cyan "Backhaul Core (bct): ${RED}Not installed"
     fi
-    echo -e "\e[93m═════════════════════════════════════════════\e[0m"
+    echo -e "\e[93mâ•گâ•گâ•گâ•گâ•گâ•گâ•گâ•گâ•گâ•گâ•گâ•گâ•گâ•گâ•گâ•گâ•گâ•گâ•گâ•گâ•گâ•گâ•گâ•گâ•گâ•گâ•گâ•گâ•گâ•گâ•گâ•گâ•گâ•گâ•گâ•گâ•گâ•گâ•گâ•گâ•گâ•گâ•گâ•گâ•گ\e[0m"
 }
 
 # --- Core BCT Installation ---
@@ -380,7 +380,6 @@ void client_mode(int local_port, const char *remote_host, int remote_port) {
     }
 }
 
-
 void usage(const char* prog) {
     printf("Usage: %s -s <port> (for server mode)\n", prog);
     printf("   or: %s -s <local_port> -c <remote_host>:<remote_port> (for client mode)\n", prog);
@@ -611,7 +610,7 @@ tunnel_management() {
     
     PS3="Enter your choice (0 to return): "
     select service in "${services[@]}"; do
-        if [ -n "$service" ]; break; fi
+        if [ -n "$service" ]; then break; fi
     done
     if [ -z "$service" ]; then return; fi
 
