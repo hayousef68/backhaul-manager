@@ -2,9 +2,9 @@
 
 # ==========================================================
 # Backhaul Auto Setup & Management Script
-# Version: 2.0
-# Inspired by the script provided by the user.
-# Enhanced and completed by Google Gemini.
+# Version: 2.1
+# Based on the sample provided by the user.
+# Enhanced, corrected, and completed by Google Gemini.
 # ==========================================================
 
 # --- Global Variables ---
@@ -23,43 +23,45 @@ NC='\033[0m' # No Color
 
 # --- Functions ---
 
-# Clear the screen and show a header
+# Clear the screen smoothly and show a header
 clear_screen() {
-    clear
-    echo -e "${CYAN}================================================${NC}" 
-    echo -e "${CYAN}            ${WHITE}Backhaul Auto Manager${CYAN}            ${NC}" 
-    echo -e "${CYAN}               ${YELLOW}v2.0 - English${CYAN}             ${NC}" 
-    echo -e "${CYAN}================================================${NC}" 
+    # Use ANSI escape codes to clear screen and move cursor to home, which prevents flickering
+    printf "\033[2J\033[H"
+    
+    echo -e "${CYAN}================================================${NC}"
+    echo -e "${CYAN}            ${WHITE}Backhaul Auto Manager${CYAN}            ${NC}"
+    echo -e "${CYAN}               ${YELLOW}v2.1 - English${CYAN}             ${NC}"
+    echo -e "${CYAN}================================================${NC}"
     echo ""
 }
 
 # Check if the script is run as root
 check_root() {
-    if [[ $EUID -ne 0 ]]; then 
-       echo -e "${RED}Error: This script must be run as root!${NC}" 
-       echo -e "${YELLOW}Please run with 'sudo bash $0'${NC}"
+    if [[ $EUID -ne 0 ]]; then
+       echo -e "${RED}Error: This script must be run as root!${NC}"
+       echo -e "${YELLOW}Please run with: sudo bash $0${NC}"
        exit 1
     fi
 }
 
 # Detect system architecture for downloading the correct binary
 detect_arch() {
-    case $(uname -m) in 
-        x86_64|amd64) echo "linux-amd64" ;; 
-        aarch64|arm64) echo "linux-arm64" ;; 
-        armv7l) echo "linux-armv7" ;; 
-        i386|i686) echo "linux-386" ;; 
-        *) echo "unsupported" ;; 
+    case $(uname -m) in
+        x86_64|amd64) echo "linux-amd64" ;;
+        aarch64|arm64) echo "linux-arm64" ;;
+        armv7l) echo "linux-armv7" ;;
+        i386|i686) echo "linux-386" ;;
+        *) echo "unsupported" ;;
     esac
 }
 
 # Download and install the latest version of Backhaul
 install_backhaul() {
-    echo -e "${BLUE}Installing Backhaul...${NC}"
+    echo -e "${BLUE}Installing/Updating Backhaul...${NC}"
     local ARCH
     ARCH=$(detect_arch)
-    if [ "$ARCH" = "unsupported" ]; then 
-        echo -e "${RED}Error: Unsupported system architecture!${NC}" 
+    if [ "$ARCH" = "unsupported" ]; then
+        echo -e "${RED}Error: Unsupported system architecture!${NC}"
         return 1
     fi
 
@@ -74,7 +76,7 @@ install_backhaul() {
     echo -e "${YELLOW}Downloading Backhaul ${LATEST_VERSION}...${NC}"
     cd /tmp
     if ! wget -q --show-progress "$DOWNLOAD_URL" -O backhaul.tar.gz; then
-        echo -e "${RED}Error: Download failed! Please check your network or the URL.${NC}" 
+        echo -e "${RED}Error: Download failed! Please check your network or the URL.${NC}"
         return 1
     fi
 
@@ -90,51 +92,44 @@ install_backhaul() {
 # Create a server configuration file
 create_server_config() {
     clear_screen
-    echo -e "${PURPLE}--- Server Configuration ---${NC}" 
-    echo ""
+    echo -e "${PURPLE}--- Server Configuration ---${NC}\n"
 
-    echo -e "${CYAN}Select server location:${NC}"
-    select server_location_choice in "Iran Server (Foreign will connect to this)" "Foreign Server (Iran will connect to this)"; do 
+    PS3="Please select server location: "
+    select server_location_choice in "Iran Server (Foreign will connect to this)" "Foreign Server (Iran will connect to this)"; do
         case $server_location_choice in
-            "Iran Server (Foreign will connect to this)")
-                SERVER_LOCATION="iran"
-                DEFAULT_PORT=443
-                break
-                ;;
-            "Foreign Server (Iran will connect to this)")
-                SERVER_LOCATION="foreign"
-                DEFAULT_PORT=7777
-                break
-                ;;
+            "Iran Server (Foreign will connect to this)") SERVER_LOCATION="iran"; DEFAULT_PORT=443; break ;;
+            "Foreign Server (Iran will connect to this)") SERVER_LOCATION="foreign"; DEFAULT_PORT=7777; break ;;
         esac
     done
 
-    read -p "Enter server port [Default: ${DEFAULT_PORT}]: " SERVER_PORT 
-    SERVER_PORT=${SERVER_PORT:-$DEFAULT_PORT} 
-    read -p "Enter connection password [Default: mypassword]: " PASSWORD 
-    PASSWORD=${PASSWORD:-mypassword} 
+    read -p "Enter server port [Default: ${DEFAULT_PORT}]: " SERVER_PORT
+    SERVER_PORT=${SERVER_PORT:-$DEFAULT_PORT}
+    read -p "Enter connection password [Default: mypassword]: " PASSWORD
+    PASSWORD=${PASSWORD:-mypassword}
 
-    echo -e "${CYAN}Select transport protocol:${NC}"
-    select protocol_choice in "TCP (Fast, simple)" "WebSocket (WS)" "WebSocket Secure (WSS) - Recommended" "GRPC"; do 
+    echo -e "\n${CYAN}Select transport protocol:${NC}"
+    PS3="Your choice: "
+    select protocol_choice in "TCP (Fast, simple)" "WebSocket (WS)" "WebSocket Secure (WSS) - Recommended" "GRPC"; do
         case $protocol_choice in
-            "TCP (Fast, simple)") TRANSPORT="tcp"; break ;; 
-            "WebSocket (WS)") TRANSPORT="ws"; break ;; 
-            "WebSocket Secure (WSS) - Recommended") TRANSPORT="wss"; break ;; 
-            "GRPC") TRANSPORT="grpc"; break ;; 
+            "TCP (Fast, simple)") TRANSPORT="tcp"; break ;;
+            "WebSocket (WS)") TRANSPORT="ws"; break ;;
+            "WebSocket Secure (WSS) - Recommended") TRANSPORT="wss"; break ;;
+            "GRPC") TRANSPORT="grpc"; break ;;
         esac
     done
 
     HEARTBEAT_CONFIG=""
     SNI_CONFIG=""
-    if [ "$SERVER_LOCATION" = "iran" ]; then 
-        read -p "Enable heartbeat for stability? [y/N]: " ENABLE_HEARTBEAT 
-        if [[ $ENABLE_HEARTBEAT =~ ^[Yy]$ ]]; then 
-            HEARTBEAT_CONFIG="heartbeat = 40" 
+    if [ "$SERVER_LOCATION" = "iran" ]; then
+        echo ""
+        read -p "Enable heartbeat for stability? [y/N]: " ENABLE_HEARTBEAT
+        if [[ $ENABLE_HEARTBEAT =~ ^[Yy]$ ]]; then
+            HEARTBEAT_CONFIG="heartbeat = 40"
         fi
-        if [ "$TRANSPORT" = "wss" ]; then 
-            read -p "Enter SNI/Domain for WSS [Default: cloudflare.com]: " SNI_DOMAIN 
-            SNI_DOMAIN=${SNI_DOMAIN:-cloudflare.com} 
-            SNI_CONFIG="sni = \"$SNI_DOMAIN\"" 
+        if [ "$TRANSPORT" = "wss" ]; then
+            read -p "Enter SNI/Domain for WSS [Default: cloudflare.com]: " SNI_DOMAIN
+            SNI_DOMAIN=${SNI_DOMAIN:-cloudflare.com}
+            SNI_CONFIG="sni = \"$SNI_DOMAIN\""
         fi
     fi
 
@@ -152,74 +147,74 @@ queue_size = 2048
 EOF
     echo -e "\n${GREEN}Server config created successfully!${NC}"
     echo -e "${BLUE}Config file: ${CONFIG_DIR}/server.toml${NC}"
-    echo -e "${YELLOW}--- Server Details ---${NC}" 
-    echo -e "  Location:  ${SERVER_LOCATION^}" 
-    echo -e "  Port:      $SERVER_PORT" 
-    echo -e "  Transport: $TRANSPORT" 
-    echo -e "  Password:  $PASSWORD" 
+    echo -e "\n${YELLOW}--- Server Details ---${NC}"
+    echo -e "  Location:  ${SERVER_LOCATION^}"
+    echo -e "  Port:      ${SERVER_PORT}"
+    echo -e "  Transport: ${TRANSPORT}"
+    echo -e "  Password:  ${PASSWORD}"
 }
 
 # Create a client configuration file
 create_client_config() {
     clear_screen
-    echo -e "${PURPLE}--- Client Configuration ---${NC}" 
-    echo ""
+    echo -e "${PURPLE}--- Client Configuration ---${NC}\n"
 
-    echo -e "${CYAN}Select client location:${NC}" 
-    select client_location_choice in "Iran Client (connects to foreign server)" "Foreign Client (connects to Iran server)"; do 
+    PS3="Please select client location: "
+    select client_location_choice in "Iran Client (connects to foreign server)" "Foreign Client (connects to Iran server)"; do
         case $client_location_choice in
-            "Iran Client (connects to foreign server)") CLIENT_LOCATION="iran"; break ;; 
-            "Foreign Client (connects to Iran server)") CLIENT_LOCATION="foreign"; break ;; 
+            "Iran Client (connects to foreign server)") CLIENT_LOCATION="iran"; break ;;
+            "Foreign Client (connects to Iran server)") CLIENT_LOCATION="foreign"; break ;;
         esac
     done
 
-    read -p "Enter the Server's public IP address: " SERVER_IP 
-    if [ -z "$SERVER_IP" ]; then 
-        echo -e "${RED}Error: Server IP is required!${NC}" 
+    read -p "Enter the Server's public IP address: " SERVER_IP
+    if [ -z "$SERVER_IP" ]; then
+        echo -e "${RED}Error: Server IP is required!${NC}"
         return 1
     fi
 
-    if [ "$CLIENT_LOCATION" = "iran" ]; then 
-        DEFAULT_SERVER_PORT=7777; DEFAULT_LOCAL_PORT=8080; DEFAULT_TARGET_IP="127.0.0.1"; DEFAULT_TARGET_PORT="22"; 
+    if [ "$CLIENT_LOCATION" = "iran" ]; then
+        DEFAULT_SERVER_PORT=7777; DEFAULT_LOCAL_PORT=8080; DEFAULT_TARGET_IP="127.0.0.1"; DEFAULT_TARGET_PORT="22";
     else
-        DEFAULT_SERVER_PORT=443; DEFAULT_LOCAL_PORT=22; DEFAULT_TARGET_IP="127.0.0.1"; DEFAULT_TARGET_PORT="8080"; 
+        DEFAULT_SERVER_PORT=443; DEFAULT_LOCAL_PORT=22; DEFAULT_TARGET_IP="127.0.0.1"; DEFAULT_TARGET_PORT="8080";
     fi
 
-    read -p "Enter server port [Default: $DEFAULT_SERVER_PORT]: " SERVER_PORT 
-    SERVER_PORT=${SERVER_PORT:-$DEFAULT_SERVER_PORT} 
-    read -p "Enter connection password [Default: mypassword]: " PASSWORD 
-    PASSWORD=${PASSWORD:-mypassword} 
-    read -p "Enter local port for this machine to listen on [Default: $DEFAULT_LOCAL_PORT]: " LOCAL_PORT 
-    LOCAL_PORT=${LOCAL_PORT:-$DEFAULT_LOCAL_PORT} 
+    read -p "Enter server port [Default: $DEFAULT_SERVER_PORT]: " SERVER_PORT
+    SERVER_PORT=${SERVER_PORT:-$DEFAULT_SERVER_PORT}
+    read -p "Enter connection password [Default: mypassword]: " PASSWORD
+    PASSWORD=${PASSWORD:-mypassword}
+    read -p "Enter local port for this machine to listen on [Default: $DEFAULT_LOCAL_PORT]: " LOCAL_PORT
+    LOCAL_PORT=${LOCAL_PORT:-$DEFAULT_LOCAL_PORT}
 
-    echo -e "${YELLOW}Enter the target service details on the OTHER server:${NC}" 
-    read -p "Enter target IP address (usually 127.0.0.1) [Default: $DEFAULT_TARGET_IP]: " TARGET_IP 
-    TARGET_IP=${TARGET_IP:-$DEFAULT_TARGET_IP} 
-    read -p "Enter target port (e.g., 22 for SSH) [Default: $DEFAULT_TARGET_PORT]: " TARGET_PORT 
-    TARGET_PORT=${TARGET_PORT:-$DEFAULT_TARGET_PORT} 
-    TARGET_ADDR="${TARGET_IP}:${TARGET_PORT}" 
+    echo -e "\n${YELLOW}Enter the target service details on the OTHER server:${NC}"
+    read -p "Enter target IP address (usually 127.0.0.1) [Default: $DEFAULT_TARGET_IP]: " TARGET_IP
+    TARGET_IP=${TARGET_IP:-$DEFAULT_TARGET_IP}
+    read -p "Enter target port (e.g., 22 for SSH) [Default: $DEFAULT_TARGET_PORT]: " TARGET_PORT
+    TARGET_PORT=${TARGET_PORT:-$DEFAULT_TARGET_PORT}
+    TARGET_ADDR="${TARGET_IP}:${TARGET_PORT}"
 
-    echo -e "${CYAN}Select transport protocol:${NC}"
-    select protocol_choice in "TCP" "WebSocket (WS)" "WebSocket Secure (WSS)" "GRPC"; do 
+    echo -e "\n${CYAN}Select transport protocol:${NC}"
+    PS3="Your choice: "
+    select protocol_choice in "TCP" "WebSocket (WS)" "WebSocket Secure (WSS)" "GRPC"; do
         case $protocol_choice in
-            "TCP") TRANSPORT="tcp"; break ;; 
-            "WebSocket (WS)") TRANSPORT="ws"; break ;; 
-            "WebSocket Secure (WSS)") TRANSPORT="wss"; break ;; 
-            "GRPC") TRANSPORT="grpc"; break ;; 
+            "TCP") TRANSPORT="tcp"; break ;;
+            "WebSocket (WS)") TRANSPORT="ws"; break ;;
+            "WebSocket Secure (WSS)") TRANSPORT="wss"; break ;;
+            "GRPC") TRANSPORT="grpc"; break ;;
         esac
     done
 
     HEARTBEAT_CONFIG=""
     SNI_CONFIG=""
-    if [ "$CLIENT_LOCATION" = "iran" ]; then 
-        read -p "Enable heartbeat? [y/N]: " ENABLE_HEARTBEAT 
-        if [[ $ENABLE_HEARTBEAT =~ ^[Yy]$ ]]; then 
-            HEARTBEAT_CONFIG="heartbeat = 40" 
+    if [ "$CLIENT_LOCATION" = "iran" ]; then
+        read -p "Enable heartbeat? [y/N]: " ENABLE_HEARTBEAT
+        if [[ $ENABLE_HEARTBEAT =~ ^[Yy]$ ]]; then
+            HEARTBEAT_CONFIG="heartbeat = 40"
         fi
-        if [ "$TRANSPORT" = "wss" ]; then 
-            read -p "Enter SNI/Domain for WSS [Default: cloudflare.com]: " SNI_DOMAIN 
-            SNI_DOMAIN=${SNI_DOMAIN:-cloudflare.com} 
-            SNI_CONFIG="sni = \"$SNI_DOMAIN\"" 
+        if [ "$TRANSPORT" = "wss" ]; then
+            read -p "Enter SNI/Domain for WSS [Default: cloudflare.com]: " SNI_DOMAIN
+            SNI_DOMAIN=${SNI_DOMAIN:-cloudflare.com}
+            SNI_CONFIG="sni = \"$SNI_DOMAIN\""
         fi
     fi
 
@@ -241,23 +236,25 @@ queue_size = 2048
 EOF
     echo -e "\n${GREEN}Client config created successfully!${NC}"
     echo -e "${BLUE}Config file: ${CONFIG_DIR}/client.toml${NC}"
-    echo -e "${YELLOW}--- Client Details ---${NC}" 
-    echo -e "  Location:              ${CLIENT_LOCATION^}" 
-    echo -e "  Server:                $SERVER_IP:$SERVER_PORT" 
-    echo -e "  Local Port (Listening): $LOCAL_PORT" 
-    echo -e "  Target Service:        $TARGET_ADDR" 
-    echo -e "  Transport:             $TRANSPORT" 
+    echo -e "\n${YELLOW}--- Client Details ---${NC}"
+    echo -e "  Location:              ${CLIENT_LOCATION^}"
+    echo -e "  Server:                $SERVER_IP:$SERVER_PORT"
+    echo -e "  Local Port (Listening): $LOCAL_PORT"
+    echo -e "  Target Service:        $TARGET_ADDR"
+    echo -e "  Transport:             $TRANSPORT"
 }
 
 # Create a systemd service
 create_service() {
-    echo -e "${BLUE}Creating systemd service...${NC}"
-    select service_choice in "Server" "Client"; do 
+    clear_screen
+    echo -e "${BLUE}Creating systemd service...${NC}\n"
+    PS3="Please select the service type to create: "
+    select service_choice in "Server" "Client"; do
         case $service_choice in
             "Server")
-                CONFIG_FILE="server.toml"; SERVICE_NAME="backhaul-server"; DESCRIPTION="Backhaul Server"; break ;; 
+                CONFIG_FILE="server.toml"; SERVICE_NAME="backhaul-server"; DESCRIPTION="Backhaul Server"; break ;;
             "Client")
-                CONFIG_FILE="client.toml"; SERVICE_NAME="backhaul-client"; DESCRIPTION="Backhaul Client"; break ;; 
+                CONFIG_FILE="client.toml"; SERVICE_NAME="backhaul-client"; DESCRIPTION="Backhaul Client"; break ;;
         esac
     done
 
@@ -281,50 +278,52 @@ ExecStart=${BINARY_PATH} -c ${CONFIG_DIR}/${CONFIG_FILE}
 WantedBy=multi-user.target
 EOF
 
-    systemctl daemon-reload 
-    systemctl enable "$SERVICE_NAME" 
-    echo -e "${GREEN}Service ${SERVICE_NAME} created and enabled successfully!${NC}" 
-    echo -e "${YELLOW}You can start it now from the 'Manage Service' menu.${NC}" 
+    systemctl daemon-reload
+    systemctl enable "$SERVICE_NAME"
+    echo -e "\n${GREEN}Service ${SERVICE_NAME} created and enabled successfully!${NC}"
+    echo -e "${YELLOW}You can start it now from the 'Manage Service' menu.${NC}"
 }
 
 # Manage existing services
 manage_service() {
     clear_screen
-    echo -e "${PURPLE}--- Service Management ---${NC}"
+    echo -e "${PURPLE}--- Service Management ---${NC}\n"
     
-    SERVICES=$(ls /etc/systemd/system/backhaul-*.service 2>/dev/null | xargs -n 1 basename | sed 's/\.service//') 
-    if [ -z "$SERVICES" ]; then 
-        echo -e "${RED}No Backhaul services found! Please create a service first.${NC}" 
+    mapfile -t SERVICES < <(ls /etc/systemd/system/backhaul-*.service 2>/dev/null | xargs -n 1 basename | sed 's/\.service//')
+    
+    if [ ${#SERVICES[@]} -eq 0 ]; then
+        echo -e "${RED}No Backhaul services found! Please create a service first.${NC}"
         return
     fi
     
-    echo -e "${CYAN}Select a service to manage:${NC}"
-    select SERVICE in $SERVICES; do
+    PS3="Select a service to manage: "
+    select SERVICE in "${SERVICES[@]}"; do
         if [ -n "$SERVICE" ]; then
             break
         fi
     done
 
-    echo -e "${CYAN}Selected service: ${WHITE}${SERVICE}${NC}"
-    echo "1) Start Service"
-    echo "2) Stop Service"
-    echo "3) Restart Service"
-    echo "4) View Status"
-    echo "5) View Logs (real-time)"
-    read -p "Enter your choice: " action
+    clear_screen
+    echo -e "${CYAN}Managing service: ${WHITE}${SERVICE}${NC}"
+    systemctl is-active --quiet "$SERVICE" && echo -e "Status: ${GREEN}Active${NC}" || echo -e "Status: ${RED}Inactive${NC}"
+    echo "---"
 
-    case $action in
-        1) systemctl start "$SERVICE" && echo -e "${GREEN}Service started.${NC}" ;;
-        2) systemctl stop "$SERVICE" && echo -e "${RED}Service stopped.${NC}" ;;
-        3) systemctl restart "$SERVICE" && echo -e "${YELLOW}Service restarted.${NC}" ;;
-        4) systemctl status "$SERVICE" ;;
-        5) journalctl -u "$SERVICE" -f ;;
-        *) echo -e "${RED}Invalid choice.${NC}" ;;
-    esac
+    PS3="Your choice: "
+    select action in "Start" "Stop" "Restart" "View Status" "View Logs (real-time)" "Back to Main Menu"; do
+        case $action in
+            "Start") systemctl start "$SERVICE" && echo -e "${GREEN}Service started.${NC}"; break ;;
+            "Stop") systemctl stop "$SERVICE" && echo -e "${RED}Service stopped.${NC}"; break ;;
+            "Restart") systemctl restart "$SERVICE" && echo -e "${YELLOW}Service restarted.${NC}"; break ;;
+            "View Status") systemctl status "$SERVICE" -n 20 --no-pager; echo "Press Enter to continue..."; read -n 1; break ;;
+            "View Logs (real-time)") journalctl -u "$SERVICE" -f --no-pager; break ;;
+            "Back to Main Menu") break 2;;
+        esac
+    done
 }
 
 # Uninstall function
 uninstall_backhaul() {
+    clear_screen
     echo -e "${RED}--- Uninstall Backhaul ---${NC}"
     read -p "Are you sure you want to completely remove Backhaul and all its configs? [y/N]: " CONFIRM
     if [[ $CONFIRM =~ ^[Yy]$ ]]; then
@@ -367,7 +366,7 @@ main_menu() {
             *) echo -e "${RED}Invalid choice, please try again.${NC}" ;;
         esac
         echo -e "\n${YELLOW}Press Enter to return to the main menu...${NC}"
-        read -n 1
+        read -r
     done
 }
 
