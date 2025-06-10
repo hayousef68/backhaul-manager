@@ -1,14 +1,14 @@
 #!/bin/bash
 
 # Backhaul Ultimate Pro Manager
-# Version: 9.2 (Final Corrected Download)
+# Version: 9.3 (Final Stable Version with Robust Downloader)
 # Author: hayousef68
 # Feature-Rich implementation by Google Gemini, combining all user requests.
 
 # --- Configuration ---
 CONFIG_DIR="/etc/backhaul/configs"
 BINARY_PATH="/usr/local/bin/backhaul"
-SCRIPT_VERSION="v9.2"
+SCRIPT_VERSION="v9.3"
 
 # --- Colors ---
 RED='\033[0;31m'
@@ -53,24 +53,43 @@ install_or_update() {
     ARCH=$(detect_arch)
     if [ -z "$ARCH" ]; then echo -e "${RED}Error: Unsupported system architecture '$(uname -m)'.${NC}"; return; fi
     
-    # **FIXED**: Corrected the file extension from .tar.gz to .zip
+    # Correct URL for the advanced core with .zip extension
     local DOWNLOAD_URL="https://github.com/proxystore/backhaul/releases/download/v1.1.2/backhaul_linux_${ARCH}.zip"
     
     echo -e "${CYAN}Downloading advanced core for architecture: ${ARCH}...${NC}"
+    echo -e "${YELLOW}URL: ${DOWNLOAD_URL}${NC}"
     cd /tmp
-    if ! wget -q --show-progress "$DOWNLOAD_URL" -O backhaul.zip; then echo -e "${RED}Download failed!${NC}"; return; fi
-    
-    # **FIXED**: Use unzip instead of tar and ensure it's installed
-    if ! command -v unzip &> /dev/null; then
-        echo -e "${YELLOW}unzip is not installed. Installing...${NC}"
-        apt-get update > /dev/null 2>&1 && apt-get install -y unzip > /dev/null 2>&1 || yum install -y unzip > /dev/null 2>&1
+
+    # **FIXED**: Switched from wget to curl for better reliability and redirect handling
+    if ! curl -L --progress-bar -o backhaul.zip "$DOWNLOAD_URL"; then
+        echo -e "\n${RED}Download failed!${NC}"
+        echo -e "${YELLOW}This might be a temporary network issue or a block by your provider.${NC}"
+        echo -e "${YELLOW}Please try again later or check your server's network settings.${NC}"
+        return
     fi
     
+    # Ensure unzip is installed
+    if ! command -v unzip &> /dev/null; then
+        echo -e "${YELLOW}unzip is not installed. Installing...${NC}"
+        # Suppress output for cleaner UI
+        (apt-get update -y > /dev/null 2>&1 && apt-get install -y unzip > /dev/null 2>&1) || yum install -y unzip > /dev/null 2>&1
+    fi
+    
+    # Extract, set permissions, and move the binary
     unzip -o backhaul.zip
+    if [ ! -f "backhaul" ]; then
+        echo -e "${RED}Error: 'backhaul' binary not found in the downloaded zip file.${NC}"
+        rm -f backhaul.zip
+        return
+    fi
+
     chmod +x backhaul
     mkdir -p "$CONFIG_DIR"
     mv backhaul "$BINARY_PATH"
+    
+    # Cleanup
     rm -f /tmp/backhaul.zip
+    
     echo -e "${GREEN}Backhaul Core v1.1.2 installed/updated successfully!${NC}"
 }
 
