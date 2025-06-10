@@ -1,14 +1,14 @@
 #!/bin/bash
 
 # Backhaul Professional Tunnel Manager
-# Version: 5.0
+# Version: 5.1 (tcpmux support added)
 # Author: hayousef68
-# Completely rewritten by Google Gemini based on user's detailed specifications
+# Rewritten and Enhanced by Google Gemini
 
 # --- Configuration ---
 CONFIG_DIR="/etc/backhaul/configs"
 BINARY_PATH="/usr/local/bin/backhaul"
-SCRIPT_VERSION="v5.0"
+SCRIPT_VERSION="v5.1"
 
 # --- Colors ---
 RED='\033[0;31m'
@@ -98,34 +98,55 @@ generate_server_config() {
     clear
     echo -e "${CYAN}--- Configuring IRAN Server: ${name} ---${NC}"
     
-    # Collect all parameters based on screenshots
+    # Transport Selection
+    echo "Select Transport Protocol:"
+    echo "1) tcp"
+    echo "2) tcpmux (Advanced, for multiplexing)"
+    echo "3) ws"
+    echo "4) wss"
+    read -p "Choose [1-4]: " TRANSPORT_CHOICE
+    
+    # Common settings
     read -p "[+] Tunnel port: " BIND_PORT
-    read -p "[+] Transport type (tcp/tcpmux/ws/wss/etc): " TRANSPORT
     read -p "[+] Security Token (press enter for default): " TOKEN
     read -p "[+] Channel Size (default 2048): " CHANNEL_SIZE; CHANNEL_SIZE=${CHANNEL_SIZE:-2048}
     read -p "[-] Enable TCP_NODELAY (true/false) [true]: " NODELAY; NODELAY=${NODELAY:-true}
     read -p "[-] Heartbeat (in seconds, default 40): " HEARTBEAT; HEARTBEAT=${HEARTBEAT:-40}
-    read -p "[-] Accept UDP (true/false) [false]: " ACCEPT_UDP; ACCEPT_UDP=${ACCEPT_UDP:-false}
-    read -p "[-] Enable Sniffer (true/false) [false]: " SNIFFER; SNIFFER=${SNIFFER:-false}
-    read -p "[-] Enter Web Port (default @ to disable): " WEB_PORT; WEB_PORT=${WEB_PORT:-@}
     
-    # Build the config string
-    local config="[server]\nbind_addr = \"0.0.0.0:${BIND_PORT}\"\ntransport = \"${TRANSPORT}\"\ntoken = \"${TOKEN}\"\nchannel_size = ${CHANNEL_SIZE}\nnodelay = ${NODELAY}\nheartbeat = ${HEARTBEAT}\naccept_udp = ${ACCEPT_UDP}\nsniffer = ${SNIFFER}\n"
-    if [[ "$WEB_PORT" != "@" ]]; then
-        config+="web_port = ${WEB_PORT}\n"
-    fi
-    
-    # Handle TCP port list
-    if [[ "$TRANSPORT" == "tcp" || "$TRANSPORT" == "tcpmux" ]]; then
-        echo -e "\n${YELLOW}[*] Supported Port Formats:${NC}"
-        echo "  1. 443-600                  -> Listen on all ports in the range 443 to 600."
-        echo "  2. 443-600:5201             -> Listen on range 443-600 and forward to 5201."
-        echo "  3. 443-600=1.1.1.1:5201     -> Listen on range 443-600 and forward to 1.1.1.1:5201."
-        echo "  4. 443                      -> Listen on 443 and forward to remote 443."
-        echo "  5. 4000:5000                -> Listen on 4000 and forward to remote 5000."
-        echo "  6. 127.0.0.2:443:5201       -> Bind to specific IP, listen on 443, forward to 5201."
-        echo "  7. 443=1.1.1.1:5201         -> Listen on 443 and forward to specific remote IP and port."
-        read -p "[+] Enter your ports in the specified formats (comma-separated): " PORTS
+    local config="[server]\nbind_addr = \"0.0.0.0:${BIND_PORT}\"\ntoken = \"${TOKEN}\"\nchannel_size = ${CHANNEL_SIZE}\nnodelay = ${NODELAY}\nheartbeat = ${HEARTBEAT}\n"
+
+    case $TRANSPORT_CHOICE in
+        1) # TCP
+            config+="transport = \"tcp\"\n"
+            read -p "[-] Accept UDP connections (true/false) [false]: " ACCEPT_UDP; ACCEPT_UDP=${ACCEPT_UDP:-false}
+            config+="accept_udp = ${ACCEPT_UDP}\n"
+            ;;
+        2) # TCPMUX
+            config+="transport = \"tcpmux\"\n"
+            echo -e "${YELLOW}--- Advanced MUX Settings ---${NC}"
+            read -p "[-] MUX Connections (default 8): " MUX_CON; MUX_CON=${MUX_CON:-8}
+            read -p "[-] MUX Frame Size (default 32768): " MUX_FRAMESIZE; MUX_FRAMESIZE=${MUX_FRAMESIZE:-32768}
+            read -p "[-] MUX Receive Buffer (default 4194304): " MUX_RECEIVEBUFFER; MUX_RECEIVEBUFFER=${MUX_RECEIVEBUFFER:-4194304}
+            read -p "[-] MUX Stream Buffer (default 65536): " MUX_STREAMBUFFER; MUX_STREAMBUFFER=${MUX_STREAMBUFFER:-65536}
+            config+="mux_con = ${MUX_CON}\nmux_framesize = ${MUX_FRAMESIZE}\nmux_recievebuffer = ${MUX_RECEIVEBUFFER}\nmux_streambuffer = ${MUX_STREAMBUFFER}\n"
+            ;;
+        3) # WS
+            config+="transport = \"ws\"\n"
+            ;;
+        4) # WSS
+            config+="transport = \"wss\"\n"
+            read -p "[-] Path to TLS certificate (.crt): " TLS_CERT
+            read -p "[-] Path to TLS private key (.key): " TLS_KEY
+            config+="tls_cert = \"${TLS_CERT}\"\ntls_key = \"${TLS_KEY}\"\n"
+            ;;
+        *) echo -e "${RED}Invalid transport selection.${NC}"; return ;;
+    esac
+
+    # Handle port list for TCP-based transports
+    if [[ "$TRANSPORT_CHOICE" == "1" || "$TRANSPORT_CHOICE" == "2" ]]; then
+        echo -e "\n${YELLOW}[*] Supported Port Formats for TCP/TCPMUX Server:${NC}"
+        echo "  - 443-600 (range), 80 (single), 1000:2000 (local:remote), 443=1.1.1.1:5201 (local=remote_ip:port)"
+        read -p "[+] Enter your ports (comma-separated): " PORTS
         ports_formatted=$(echo "$PORTS" | tr -d ' ' | sed 's/,/","/g')
         config+="ports = [\"${ports_formatted}\"]\n"
     fi
@@ -145,21 +166,43 @@ generate_client_config() {
     clear
     echo -e "${CYAN}--- Configuring KHAREJ Client: ${name} ---${NC}"
     
-    # Collect all parameters
-    read -p "[+] Remote server address (IP:PORT): " REMOTE_ADDR
-    read -p "[+] Transport type (must match server): " TRANSPORT
-    read -p "[+] Security Token: " TOKEN
-    read -p "[+] Channel Size (default 2048): " CHANNEL_SIZE; CHANNEL_SIZE=${CHANNEL_SIZE:-2048}
-    read -p "[-] Enable TCP_NODELAY (true/false) [true]: " NODELAY; NODELAY=${NODELAY:-true}
-    read -p "[-] Heartbeat (in seconds, default 40): " HEARTBEAT; HEARTBEAT=${HEARTBEAT:-40}
+    # Transport Selection
+    echo "Select Transport Protocol (must match server):"
+    echo "1) tcp"
+    echo "2) tcpmux"
+    echo "3) ws"
+    echo "4) wss"
+    read -p "Choose [1-4]: " TRANSPORT_CHOICE
 
-    # Build the config string
-    local config="[client]\nremote_addr = \"${REMOTE_ADDR}\"\ntransport = \"${TRANSPORT}\"\ntoken = \"${TOKEN}\"\nchannel_size = ${CHANNEL_SIZE}\nnodelay = ${NODELAY}\nheartbeat = ${HEARTBEAT}\n"
+    # Common settings
+    read -p "[+] Remote server address (IP:PORT): " REMOTE_ADDR
+    read -p "[+] Security Token: " TOKEN
+    read -p "[-] Enable TCP_NODELAY (true/false) [true]: " NODELAY; NODELAY=${NODELAY:-true}
     
-    # Save base config
+    local config="[client]\nremote_addr = \"${REMOTE_ADDR}\"\ntoken = \"${TOKEN}\"\nnodelay = ${NODELAY}\n"
+
+    case $TRANSPORT_CHOICE in
+        1) config+="transport = \"tcp\"\n" ;;
+        2) 
+            config+="transport = \"tcpmux\"\n"
+            echo -e "${YELLOW}--- Advanced MUX Settings ---${NC}"
+            read -p "[-] Connection Pool Size (default 8): " CONN_POOL; CONN_POOL=${CONN_POOL:-8}
+            read -p "[-] Use Aggressive Pooling (true/false) [false]: " AGGRESSIVE_POOL; AGGRESSIVE_POOL=${AGGRESSIVE_POOL:-false}
+            config+="connection_pool = ${CONN_POOL}\naggressive_pool = ${AGGRESSIVE_POOL}\n"
+            ;;
+        3) config+="transport = \"ws\"\n" ;;
+        4) 
+            config+="transport = \"wss\"\n"
+            read -p "[-] SNI for WSS (e.g., domain.com) [optional]: " SNI
+            if [ -n "$SNI" ]; then config+="sni = \"${SNI}\"\n"; fi
+            ;;
+        *) echo -e "${RED}Invalid transport selection.${NC}"; return ;;
+    esac
+    
+    # Write base config
     echo -e "$config" > "$CONFIG_DIR/${name}.toml"
 
-    # Add services
+    # Add services (port forwarding rules)
     echo -e "\n${PURPLE}--- Define Port Forwarding Rules ---${NC}"
     while true; do
         read -p "Add a port forwarding rule? [Y/n]: " ADD_PORT_CHOICE
@@ -178,6 +221,8 @@ generate_client_config() {
     echo -e "${GREEN}Client config '${name}' created successfully.${NC}"
     create_service "$name"
 }
+
+# --- Management Functions (mostly unchanged) ---
 
 create_service() {
     local name=$1
@@ -219,16 +264,16 @@ tunnel_management_menu() {
     echo "List of existing services to manage:"
     i=1
     for name in "${configs[@]}"; do
-        local BIND_PORT=$(grep 'bind_addr' "$CONFIG_DIR/${name}.toml" | cut -d':' -f2 | tr -d '"')
+        local BIND_PORT=$(grep 'bind_addr' "$CONFIG_DIR/${name}.toml" 2>/dev/null | cut -d':' -f2 | tr -d '"')
         if [ -z "$BIND_PORT" ]; then
-             BIND_PORT=$(grep 'remote_addr' "$CONFIG_DIR/${name}.toml" | cut -d':' -f2 | tr -d '"')
+             BIND_PORT=$(grep 'remote_addr' "$CONFIG_DIR/${name}.toml" 2>/dev/null | cut -d':' -f2 | tr -d '"')
         fi
         echo "$i) $name, Tunnel port: $BIND_PORT"
         let i++
     done
     
     read -p "Enter your choice (0 to return): " choice
-    if [ "$choice" -eq 0 ]; then return; fi
+    if ! [[ "$choice" =~ ^[0-9]+$ ]] || [ "$choice" -eq 0 ]; then return; fi
     
     local selected_name=${configs[$((choice-1))]}
     if [ -z "$selected_name" ]; then
