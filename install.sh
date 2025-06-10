@@ -1,14 +1,14 @@
 #!/bin/bash
 
 # Backhaul Ultimate Pro Manager
-# Version: 9.3 (Final Stable Version with Robust Downloader)
+# Version: 9.4 (Final with Smart Fallback Downloader)
 # Author: hayousef68
 # Feature-Rich implementation by Google Gemini, combining all user requests.
 
 # --- Configuration ---
 CONFIG_DIR="/etc/backhaul/configs"
 BINARY_PATH="/usr/local/bin/backhaul"
-SCRIPT_VERSION="v9.3"
+SCRIPT_VERSION="v9.4"
 
 # --- Colors ---
 RED='\033[0;31m'
@@ -53,33 +53,33 @@ install_or_update() {
     ARCH=$(detect_arch)
     if [ -z "$ARCH" ]; then echo -e "${RED}Error: Unsupported system architecture '$(uname -m)'.${NC}"; return; fi
     
-    # Correct URL for the advanced core with .zip extension
-    local DOWNLOAD_URL="https://github.com/proxystore/backhaul/releases/download/v1.1.2/backhaul_linux_${ARCH}.zip"
+    local FILE_NAME="backhaul.zip"
+    # **NEW**: Define Primary and Fallback URLs for robust download
+    local PRIMARY_URL="https://github.com/proxystore/backhaul/releases/download/v1.1.2/backhaul_linux_${ARCH}.zip"
+    local FALLBACK_URL="https://ghproxy.com/${PRIMARY_URL}"
     
-    echo -e "${CYAN}Downloading advanced core for architecture: ${ARCH}...${NC}"
-    echo -e "${YELLOW}URL: ${DOWNLOAD_URL}${NC}"
     cd /tmp
 
-    # **FIXED**: Switched from wget to curl for better reliability and redirect handling
-    if ! curl -L --progress-bar -o backhaul.zip "$DOWNLOAD_URL"; then
-        echo -e "\n${RED}Download failed!${NC}"
-        echo -e "${YELLOW}This might be a temporary network issue or a block by your provider.${NC}"
-        echo -e "${YELLOW}Please try again later or check your server's network settings.${NC}"
-        return
+    echo -e "${CYAN}Attempting to download from primary source...${NC}"
+    if ! curl -L --progress-bar -o "$FILE_NAME" "$PRIMARY_URL"; then
+        echo -e "\n${YELLOW}Primary download failed. Trying fallback source automatically...${NC}"
+        if ! curl -L --progress-bar -o "$FILE_NAME" "$FALLBACK_URL"; then
+            echo -e "\n${RED}Download failed from all sources!${NC}"
+            echo -e "${YELLOW}Please check your server's network connection and try again later.${NC}"
+            return
+        fi
     fi
     
     # Ensure unzip is installed
     if ! command -v unzip &> /dev/null; then
         echo -e "${YELLOW}unzip is not installed. Installing...${NC}"
-        # Suppress output for cleaner UI
         (apt-get update -y > /dev/null 2>&1 && apt-get install -y unzip > /dev/null 2>&1) || yum install -y unzip > /dev/null 2>&1
     fi
     
-    # Extract, set permissions, and move the binary
-    unzip -o backhaul.zip
+    unzip -o "$FILE_NAME"
     if [ ! -f "backhaul" ]; then
         echo -e "${RED}Error: 'backhaul' binary not found in the downloaded zip file.${NC}"
-        rm -f backhaul.zip
+        rm -f "$FILE_NAME"
         return
     fi
 
@@ -87,9 +87,7 @@ install_or_update() {
     mkdir -p "$CONFIG_DIR"
     mv backhaul "$BINARY_PATH"
     
-    # Cleanup
-    rm -f /tmp/backhaul.zip
-    
+    rm -f "$FILE_NAME"
     echo -e "${GREEN}Backhaul Core v1.1.2 installed/updated successfully!${NC}"
 }
 
