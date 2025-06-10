@@ -1,14 +1,14 @@
 #!/bin/bash
 
 # Backhaul Ultimate Pro Manager
-# Version: 8.1 (Final Reviewed Version)
+# Version: 9.1 (Final Stability-Tuned Version)
 # Author: hayousef68
 # Feature-Rich implementation by Google Gemini, combining all user requests.
 
 # --- Configuration ---
 CONFIG_DIR="/etc/backhaul/configs"
 BINARY_PATH="/usr/local/bin/backhaul"
-SCRIPT_VERSION="v8.1"
+SCRIPT_VERSION="v9.1"
 
 # --- Colors ---
 RED='\033[0;31m'
@@ -51,24 +51,40 @@ install_or_update() {
     clear
     echo -e "${BLUE}Installing/Updating Backhaul Core (Advanced Version)...${NC}"
     ARCH=$(detect_arch)
-    if [ -z "$ARCH" ]; then
-        echo -e "${RED}Error: Unsupported system architecture '$(uname -m)'.${NC}"
-        return
-    fi
+    if [ -z "$ARCH" ]; then echo -e "${RED}Error: Unsupported system architecture '$(uname -m)'.${NC}"; return; fi
     local DOWNLOAD_URL="https://github.com/proxystore/backhaul/releases/download/v1.1.2/backhaul_linux_${ARCH}.tar.gz"
     echo -e "${CYAN}Downloading advanced core for architecture: ${ARCH}...${NC}"
     cd /tmp
-    if ! wget -q --show-progress "$DOWNLOAD_URL" -O backhaul.tar.gz; then
-        echo -e "${RED}Download failed! Please check your network or the URL.${NC}"
-        return
-    fi
+    if ! wget -q --show-progress "$DOWNLOAD_URL" -O backhaul.tar.gz; then echo -e "${RED}Download failed!${NC}"; return; fi
     tar -xzf backhaul.tar.gz
     chmod +x backhaul
-    mv backhaul "$BINARY_PATH"
+    # Ensure config directory exists after installation
     mkdir -p "$CONFIG_DIR"
+    mv backhaul "$BINARY_PATH"
     rm -f /tmp/backhaul.tar.gz
     echo -e "${GREEN}Backhaul Core v1.1.2 installed/updated successfully!${NC}"
 }
+
+optimize_system() {
+    clear
+    echo -e "${BLUE}Optimizing system for tunnel stability (TCP Keepalive)...${NC}"
+    
+    cat > /etc/sysctl.d/99-backhaul-optimizations.conf << EOF
+# TCP Keepalive settings for stable tunnels
+# Send keepalive probes after 60 seconds of inactivity
+net.ipv4.tcp_keepalive_time=60
+# Send a probe every 10 seconds after the first one
+net.ipv4.tcp_keepalive_intvl=10
+# Consider the connection dead after 5 failed probes
+net.ipv4.tcp_keepalive_probes=5
+EOF
+
+    sysctl -p /etc/sysctl.d/99-backhaul-optimizations.conf > /dev/null
+    
+    echo -e "${GREEN}System TCP settings have been optimized for stability.${NC}"
+    echo -e "${YELLOW}These settings will persist after reboot.${NC}"
+}
+
 
 configure_new_tunnel() {
     clear
@@ -92,11 +108,11 @@ configure_new_tunnel() {
 
 generate_server_config() {
     local name=$1
-    if [[ -z "$name" || -f "$CONFIG_DIR/${name}.toml" ]]; then echo -e "${RED}Error: Config name invalid.${NC}"; return; fi
+    if [[ -z "$name" || -f "$CONFIG_DIR/${name}.toml" ]]; then echo -e "${RED}Error: Config name invalid or exists.${NC}"; return; fi
+    mkdir -p "$CONFIG_DIR"
     clear
     echo -e "${CYAN}--- Configuring IRAN server: ${WHITE}${name}${NC} ---${NC}"
     
-    # Collect all parameters based on screenshots
     read -p "[+] Tunnel port: " BIND_PORT
     read -p "[+] Transport type (tcp/tcpmux/ws/wss/wssmux): " TRANSPORT
     read -p "[+] Security Token: " TOKEN
@@ -108,17 +124,14 @@ generate_server_config() {
     read -p "[-] Enter Web Port (@ to disable) [@]: " WEB_PORT; WEB_PORT=${WEB_PORT:-@}
     read -p "[-] Enable Proxy Protocol (for Cloudflare) [false]: " PROXY; PROXY=${PROXY:-false}
 
-
     local config="[server]\nbind_addr = \"0.0.0.0:${BIND_PORT}\"\ntransport = \"${TRANSPORT}\"\ntoken = \"${TOKEN}\"\nchannel_size = ${CHANNEL_SIZE}\nnodelay = ${NODELAY}\nheartbeat = ${HEARTBEAT}\naccept_udp = ${ACCEPT_UDP}\nsniffer = ${SNIFFER}\nproxy_protocol = ${PROXY}\n"
     if [[ "$WEB_PORT" != "@" ]]; then config+="web_port = ${WEB_PORT}\n"; fi
     
-    # MUX settings
     if [[ "$TRANSPORT" == "tcpmux" || "$TRANSPORT" == "wssmux" ]]; then
         read -p "[-] MUX Connections [128]: " MUX_CON; MUX_CON=${MUX_CON:-128}
         config+="mux_con = ${MUX_CON}\n"
     fi
     
-    # TCP port list
     if [[ "$TRANSPORT" == "tcp" || "$TRANSPORT" == "tcpmux" ]]; then
         echo -e "\n${YELLOW}[*] Supported Port Formats:${NC}"
         echo "  - 443-600 | 80 | 1000:2000 | 443=1.1.1.1:5201"
@@ -134,7 +147,8 @@ generate_server_config() {
 
 generate_client_config() {
     local name=$1
-    if [[ -z "$name" || -f "$CONFIG_DIR/${name}.toml" ]]; then echo -e "${RED}Error: Config name invalid.${NC}"; return; fi
+    if [[ -z "$name" || -f "$CONFIG_DIR/${name}.toml" ]]; then echo -e "${RED}Error: Config name invalid or exists.${NC}"; return; fi
+    mkdir -p "$CONFIG_DIR"
     clear
     echo -e "${CYAN}--- Configuring KHAREJ client: ${WHITE}${name}${NC} ---${NC}"
     
@@ -142,10 +156,10 @@ generate_client_config() {
     read -p "[+] Transport type (must match server): " TRANSPORT
     read -p "[+] Security Token: " TOKEN
     read -p "[-] Enable TCP_NODELAY (true/false) [true]: " NODELAY; NODELAY=${NODELAY:-true}
+    read -p "[-] Retry Interval on failure (seconds) [3]: " RETRY; RETRY=${RETRY:-3}
 
-    local config="[client]\nremote_addr = \"${REMOTE_ADDR}\"\ntransport = \"${TRANSPORT}\"\ntoken = \"${TOKEN}\"\nnodelay = ${NODELAY}\n"
+    local config="[client]\nremote_addr = \"${REMOTE_ADDR}\"\ntransport = \"${TRANSPORT}\"\ntoken = \"${TOKEN}\"\nnodelay = ${NODELAY}\nretry_interval = ${RETRY}\n"
     
-    # MUX settings
     if [[ "$TRANSPORT" == "tcpmux" || "$TRANSPORT" == "wssmux" ]]; then
         read -p "[-] Connection Pool Size [128]: " CONN_POOL; CONN_POOL=${CONN_POOL:-128}
         config+="connection_pool = ${CONN_POOL}\n"
@@ -262,8 +276,9 @@ show_main_menu() {
     echo -e "-------------------------------------------"
     echo -e "1. Configure a new tunnel"
     echo -e "2. Tunnel management menu"
-    echo -e "3. Update & Install Backhaul Core"
-    echo -e "4. Remove Backhaul Core"
+    echo -e "3. ${YELLOW}Optimize System for Stability${NC}"
+    echo -e "4. Update & Install Backhaul Core"
+    echo -e "5. Remove Backhaul Core"
     echo -e "0. Exit"
     echo -e "-------------------------------------------"
 }
@@ -272,10 +287,10 @@ show_main_menu() {
 check_root
 while true; do
     show_main_menu
-    read -p "Enter your choice [0-4]: " main_choice
+    read -p "Enter your choice [0-5]: " main_choice
     case $main_choice in
-        1) configure_new_tunnel ;; 2) tunnel_management_menu ;; 3) install_or_update ;;
-        4) remove_backhaul ;; 0) exit 0 ;; *) echo -e "${RED}Invalid choice!${NC}" ;;
+        1) configure_new_tunnel ;; 2) tunnel_management_menu ;; 3) optimize_system ;;
+        4) install_or_update ;; 5) remove_backhaul ;; 0) exit 0 ;; *) echo -e "${RED}Invalid choice!${NC}" ;;
     esac
     read -n 1 -s -r -p $'\nPress any key to return to main menu...'
 done
