@@ -1,6 +1,6 @@
 #!/bin/bash
 
-# Backhaul Auto Setup Script
+# Backhaul Auto Setup Script - English Version
 # Colors for better UI
 RED='\033[0;31m'
 GREEN='\033[0;32m'
@@ -17,21 +17,21 @@ LOG_FILE="/var/log/backhaul.log"
 SERVICE_FILE="/etc/systemd/system/backhaul.service"
 BINARY_PATH="/usr/local/bin/backhaul"
 
-# Clear screen function
+# Clear screen and show header
 clear_screen() {
     clear
-    echo -e "${CYAN}╔══════════════════════════════════════════════════════════════╗${NC}"
-    echo -e "${CYAN}║                    ${WHITE}Backhaul Auto Manager${CYAN}                     ║${NC}"
-    echo -e "${CYAN}║                        ${YELLOW}v1.0 - Persian${CYAN}                         ║${NC}"
-    echo -e "${CYAN}╚══════════════════════════════════════════════════════════════╝${NC}"
+    echo -e "${CYAN}================================================${NC}"
+    echo -e "${CYAN}            ${WHITE}Backhaul Auto Manager${CYAN}            ${NC}"
+    echo -e "${CYAN}               ${YELLOW}v1.1 - English${CYAN}               ${NC}"
+    echo -e "${CYAN}================================================${NC}"
     echo ""
 }
 
 # Check if running as root
 check_root() {
     if [[ $EUID -ne 0 ]]; then
-        echo -e "${RED}❌ این اسکریپت باید با دسترسی root اجرا شود!${NC}"
-        echo -e "${YELLOW}لطفاً با sudo اجرا کنید: sudo bash $0${NC}"
+        echo -e "${RED}Error: This script must be run as root!${NC}"
+        echo -e "${YELLOW}Please run with sudo: sudo bash $0${NC}"
         exit 1
     fi
 }
@@ -49,32 +49,32 @@ detect_arch() {
 
 # Download and install Backhaul
 install_backhaul() {
-    echo -e "${BLUE}🔄 در حال نصب Backhaul...${NC}"
+    echo -e "${BLUE}Installing Backhaul...${NC}"
     
     ARCH=$(detect_arch)
     if [ "$ARCH" = "unsupported" ]; then
-        echo -e "${RED}❌ معماری سیستم شما پشتیبانی نمی‌شود!${NC}"
+        echo -e "${RED}Error: Unsupported system architecture!${NC}"
         return 1
     fi
     
     # Get latest version
-    echo -e "${YELLOW}📡 دریافت آخرین نسخه...${NC}"
+    echo -e "${YELLOW}Getting latest version...${NC}"
     LATEST_VERSION=$(curl -s https://api.github.com/repos/Musixal/Backhaul/releases/latest | grep '"tag_name"' | cut -d'"' -f4)
     
     if [ -z "$LATEST_VERSION" ]; then
-        echo -e "${RED}❌ خطا در دریافت اطلاعات نسخه!${NC}"
+        echo -e "${RED}Error: Failed to get version information!${NC}"
         return 1
     fi
     
     DOWNLOAD_URL="https://github.com/Musixal/Backhaul/releases/download/${LATEST_VERSION}/backhaul_${LATEST_VERSION#v}_${ARCH}.tar.gz"
     
     # Download
-    echo -e "${YELLOW}⬇️  دانلود Backhaul ${LATEST_VERSION}...${NC}"
+    echo -e "${YELLOW}Downloading Backhaul ${LATEST_VERSION}...${NC}"
     cd /tmp
     wget -q --show-progress "$DOWNLOAD_URL" -O backhaul.tar.gz
     
     if [ $? -ne 0 ]; then
-        echo -e "${RED}❌ خطا در دانلود!${NC}"
+        echo -e "${RED}Error: Download failed!${NC}"
         return 1
     fi
     
@@ -86,36 +86,90 @@ install_backhaul() {
     # Create directories
     mkdir -p "$CONFIG_DIR"
     
-    echo -e "${GREEN}✅ Backhaul با موفقیت نصب شد!${NC}"
+    echo -e "${GREEN}Backhaul installed successfully!${NC}"
     return 0
+}
+
+# Server type selection
+select_server_type() {
+    echo -e "${PURPLE}Select server location:${NC}"
+    echo "1) Iran Server (Kharej will connect to this)"
+    echo "2) Foreign Server (Iran will connect to this)"
+    echo ""
+    read -p "Enter your choice [1-2]: " SERVER_TYPE
+    
+    case $SERVER_TYPE in
+        1) echo "iran" ;;
+        2) echo "foreign" ;;
+        *) echo "iran" ;;
+    esac
 }
 
 # Create server config
 create_server_config() {
     clear_screen
-    echo -e "${PURPLE}🔧 تنظیمات سرور (Server)${NC}"
+    echo -e "${PURPLE}Server Configuration${NC}"
     echo ""
     
-    read -p "$(echo -e ${YELLOW}پورت سرور را وارد کنید [7777]: ${NC})" SERVER_PORT
-    SERVER_PORT=${SERVER_PORT:-7777}
+    # Server location selection
+    SERVER_LOCATION=$(select_server_type)
     
-    read -p "$(echo -e ${YELLOW}پسورد اتصال را وارد کنید [mypassword]: ${NC})" PASSWORD
+    if [ "$SERVER_LOCATION" = "iran" ]; then
+        echo -e "${CYAN}Configuring Iran Server (Kharej clients will connect)${NC}"
+        DEFAULT_PORT=443
+        RECOMMENDED_TRANSPORT="wss"
+    else
+        echo -e "${CYAN}Configuring Foreign Server (Iran clients will connect)${NC}"
+        DEFAULT_PORT=7777
+        RECOMMENDED_TRANSPORT="tcp"
+    fi
+    
+    read -p "Enter server port [$DEFAULT_PORT]: " SERVER_PORT
+    SERVER_PORT=${SERVER_PORT:-$DEFAULT_PORT}
+    
+    read -p "Enter connection password [mypassword]: " PASSWORD
     PASSWORD=${PASSWORD:-mypassword}
     
     # Protocol selection
-    echo -e "${CYAN}پروتکل را انتخاب کنید:${NC}"
-    echo "1) TCP"
+    echo -e "${CYAN}Select transport protocol:${NC}"
+    echo "1) TCP (Fast, simple)"
     echo "2) WebSocket (WS)"
-    echo "3) WebSocket Secure (WSS)"
-    read -p "$(echo -e ${YELLOW}انتخاب شما [1]: ${NC})" PROTOCOL_CHOICE
-    PROTOCOL_CHOICE=${PROTOCOL_CHOICE:-1}
+    echo "3) WebSocket Secure (WSS) - Recommended for Iran"
+    echo "4) GRPC"
+    echo ""
+    read -p "Enter your choice [3]: " PROTOCOL_CHOICE
+    PROTOCOL_CHOICE=${PROTOCOL_CHOICE:-3}
     
     case $PROTOCOL_CHOICE in
         1) TRANSPORT="tcp" ;;
         2) TRANSPORT="ws" ;;
         3) TRANSPORT="wss" ;;
-        *) TRANSPORT="tcp" ;;
+        4) TRANSPORT="grpc" ;;
+        *) TRANSPORT="wss" ;;
     esac
+    
+    # Additional settings for Iran server
+    if [ "$SERVER_LOCATION" = "iran" ]; then
+        echo ""
+        echo -e "${YELLOW}Additional settings for Iran server:${NC}"
+        
+        # Heartbeat settings
+        read -p "Enable heartbeat? [y/N]: " ENABLE_HEARTBEAT
+        if [[ $ENABLE_HEARTBEAT =~ ^[Yy]$ ]]; then
+            HEARTBEAT_CONFIG="heartbeat = 40"
+        else
+            HEARTBEAT_CONFIG=""
+        fi
+        
+        # SNI settings for WSS
+        if [ "$TRANSPORT" = "wss" ]; then
+            read -p "Enter SNI/Domain for WSS [cloudflare.com]: " SNI_DOMAIN
+            SNI_DOMAIN=${SNI_DOMAIN:-cloudflare.com}
+            SNI_CONFIG="sni = \"$SNI_DOMAIN\""
+        else
+            SNI_CONFIG=""
+        fi
+    fi
     
     # Create server config
     cat > "$CONFIG_DIR/server.toml" << EOF
@@ -125,53 +179,129 @@ transport = "${TRANSPORT}"
 token = "${PASSWORD}"
 keepalive_period = 75
 nodelay = true
+$([ -n "$HEARTBEAT_CONFIG" ] && echo "$HEARTBEAT_CONFIG")
+$([ -n "$SNI_CONFIG" ] && echo "$SNI_CONFIG")
 
 [server.channel_size]
 queue_size = 2048
 EOF
 
-    echo -e "${GREEN}✅ کانفیگ سرور ایجاد شد!${NC}"
-    echo -e "${BLUE}📁 مسیر: $CONFIG_DIR/server.toml${NC}"
+    echo -e "${GREEN}Server config created successfully!${NC}"
+    echo -e "${BLUE}Config file: $CONFIG_DIR/server.toml${NC}"
+    echo ""
+    echo -e "${YELLOW}Server Details:${NC}"
+    echo -e "  Location: ${SERVER_LOCATION^}"
+    echo -e "  Port: $SERVER_PORT"
+    echo -e "  Transport: $TRANSPORT"
+    echo -e "  Password: $PASSWORD"
 }
 
 # Create client config  
 create_client_config() {
     clear_screen
-    echo -e "${PURPLE}🔧 تنظیمات کلاینت (Client)${NC}"
+    echo -e "${PURPLE}Client Configuration${NC}"
     echo ""
     
-    read -p "$(echo -e ${YELLOW}آدرس IP سرور را وارد کنید: ${NC})" SERVER_IP
+    # Client location selection
+    echo -e "${PURPLE}Select client location:${NC}"
+    echo "1) Iran Client (connects to foreign server)"
+    echo "2) Foreign Client (connects to Iran server)"
+    echo ""
+    read -p "Enter your choice [1-2]: " CLIENT_TYPE
+    
+    case $CLIENT_TYPE in
+        1) 
+            CLIENT_LOCATION="iran"
+            echo -e "${CYAN}Configuring Iran Client${NC}"
+            ;;
+        2) 
+            CLIENT_LOCATION="foreign"
+            echo -e "${CYAN}Configuring Foreign Client${NC}"
+            ;;
+        *) 
+            CLIENT_LOCATION="iran"
+            echo -e "${CYAN}Configuring Iran Client${NC}"
+            ;;
+    esac
+    
+    read -p "Enter server IP address: " SERVER_IP
     if [ -z "$SERVER_IP" ]; then
-        echo -e "${RED}❌ آدرس IP الزامی است!${NC}"
+        echo -e "${RED}Error: Server IP is required!${NC}"
         return 1
     fi
     
-    read -p "$(echo -e ${YELLOW}پورت سرور را وارد کنید [7777]: ${NC})" SERVER_PORT
-    SERVER_PORT=${SERVER_PORT:-7777}
+    if [ "$CLIENT_LOCATION" = "iran" ]; then
+        DEFAULT_SERVER_PORT=7777
+        DEFAULT_LOCAL_PORT=8080
+    else
+        DEFAULT_SERVER_PORT=443
+        DEFAULT_LOCAL_PORT=22
+    fi
     
-    read -p "$(echo -e ${YELLOW}پسورد اتصال را وارد کنید [mypassword]: ${NC})" PASSWORD
+    read -p "Enter server port [$DEFAULT_SERVER_PORT]: " SERVER_PORT
+    SERVER_PORT=${SERVER_PORT:-$DEFAULT_SERVER_PORT}
+    
+    read -p "Enter connection password [mypassword]: " PASSWORD
     PASSWORD=${PASSWORD:-mypassword}
     
-    read -p "$(echo -e ${YELLOW}پورت محلی برای تانل [8080]: ${NC})" LOCAL_PORT
-    LOCAL_PORT=${LOCAL_PORT:-8080}
+    read -p "Enter local port [$DEFAULT_LOCAL_PORT]: " LOCAL_PORT
+    LOCAL_PORT=${LOCAL_PORT:-$DEFAULT_LOCAL_PORT}
     
-    read -p "$(echo -e ${YELLOW}آدرس مقصد [127.0.0.1:22]: ${NC})" TARGET_ADDR
-    TARGET_ADDR=${TARGET_ADDR:-127.0.0.1:22}
+    if [ "$CLIENT_LOCATION" = "iran" ]; then
+        DEFAULT_TARGET="127.0.0.1:22"
+    else
+        DEFAULT_TARGET="127.0.0.1:8080"
+    fi
+    
+    read -p "Enter target address [$DEFAULT_TARGET]: " TARGET_ADDR
+    TARGET_ADDR=${TARGET_ADDR:-$DEFAULT_TARGET}
     
     # Protocol selection
-    echo -e "${CYAN}پروتکل را انتخاب کنید:${NC}"
-    echo "1) TCP"
-    echo "2) WebSocket (WS)"  
-    echo "3) WebSocket Secure (WSS)"
-    read -p "$(echo -e ${YELLOW}انتخاب شما [1]: ${NC})" PROTOCOL_CHOICE
-    PROTOCOL_CHOICE=${PROTOCOL_CHOICE:-1}
+    echo -e "${CYAN}Select transport protocol:${NC}"
+    echo "1) TCP (Fast, simple)"
+    echo "2) WebSocket (WS)"
+    echo "3) WebSocket Secure (WSS) - Recommended for Iran"
+    echo "4) GRPC"
+    echo ""
+    
+    if [ "$CLIENT_LOCATION" = "iran" ]; then
+        read -p "Enter your choice [3]: " PROTOCOL_CHOICE
+        PROTOCOL_CHOICE=${PROTOCOL_CHOICE:-3}
+    else
+        read -p "Enter your choice [1]: " PROTOCOL_CHOICE
+        PROTOCOL_CHOICE=${PROTOCOL_CHOICE:-1}
+    fi
     
     case $PROTOCOL_CHOICE in
         1) TRANSPORT="tcp" ;;
         2) TRANSPORT="ws" ;;
         3) TRANSPORT="wss" ;;
+        4) TRANSPORT="grpc" ;;
         *) TRANSPORT="tcp" ;;
     esac
+    
+    # Additional settings for Iran client
+    if [ "$CLIENT_LOCATION" = "iran" ]; then
+        echo ""
+        echo -e "${YELLOW}Additional settings for Iran client:${NC}"
+        
+        # Heartbeat settings
+        read -p "Enable heartbeat? [y/N]: " ENABLE_HEARTBEAT
+        if [[ $ENABLE_HEARTBEAT =~ ^[Yy]$ ]]; then
+            HEARTBEAT_CONFIG="heartbeat = 40"
+        else
+            HEARTBEAT_CONFIG=""
+        fi
+        
+        # SNI settings for WSS
+        if [ "$TRANSPORT" = "wss" ]; then
+            read -p "Enter SNI/Domain for WSS [cloudflare.com]: " SNI_DOMAIN
+            SNI_DOMAIN=${SNI_DOMAIN:-cloudflare.com}
+            SNI_CONFIG="sni = \"$SNI_DOMAIN\""
+        else
+            SNI_CONFIG=""
+        fi
+    fi
     
     # Create client config
     cat > "$CONFIG_DIR/client.toml" << EOF
@@ -182,6 +312,8 @@ token = "${PASSWORD}"
 keepalive_period = 75
 retry_interval = 1
 nodelay = true
+$([ -n "$HEARTBEAT_CONFIG" ] && echo "$HEARTBEAT_CONFIG")
+$([ -n "$SNI_CONFIG" ] && echo "$SNI_CONFIG")
 
 [[client.services]]
 local_addr = "0.0.0.0:${LOCAL_PORT}"
@@ -191,18 +323,24 @@ remote_addr = "${TARGET_ADDR}"
 queue_size = 2048
 EOF
 
-    echo -e "${GREEN}✅ کانفیگ کلاینت ایجاد شد!${NC}"
-    echo -e "${BLUE}📁 مسیر: $CONFIG_DIR/client.toml${NC}"
+    echo -e "${GREEN}Client config created successfully!${NC}"
+    echo -e "${BLUE}Config file: $CONFIG_DIR/client.toml${NC}"
+    echo ""
+    echo -e "${YELLOW}Client Details:${NC}"
+    echo -e "  Location: ${CLIENT_LOCATION^}"
+    echo -e "  Server: $SERVER_IP:$SERVER_PORT"
+    echo -e "  Local Port: $LOCAL_PORT"
+    echo -e "  Transport: $TRANSPORT"
 }
 
 # Create systemd service
 create_service() {
-    echo -e "${BLUE}🔧 ایجاد سرویس systemd...${NC}"
+    echo -e "${BLUE}Creating systemd service...${NC}"
     
-    echo "نوع سرویس را انتخاب کنید:"
+    echo "Select service type:"
     echo "1) Server"
     echo "2) Client"
-    read -p "$(echo -e ${YELLOW}انتخاب شما: ${NC})" SERVICE_TYPE
+    read -p "Enter your choice: " SERVICE_TYPE
     
     case $SERVICE_TYPE in
         1)
@@ -214,7 +352,7 @@ create_service() {
             SERVICE_NAME="backhaul-client"
             ;;
         *)
-            echo -e "${RED}❌ انتخاب نامعتبر!${NC}"
+            echo -e "${RED}Error: Invalid selection!${NC}"
             return 1
             ;;
     esac
@@ -242,71 +380,167 @@ EOF
     systemctl daemon-reload
     systemctl enable "$SERVICE_NAME"
     
-    echo -e "${GREEN}✅ سرویس ${SERVICE_NAME} ایجاد شد!${NC}"
+    echo -e "${GREEN}Service ${SERVICE_NAME} created successfully!${NC}"
 }
 
 # Service management
 manage_service() {
     clear_screen
-    echo -e "${PURPLE}🔧 مدیریت سرویس${NC}"
+    echo -e "${PURPLE}Service Management${NC}"
     echo ""
     
     # List available services
-    echo -e "${CYAN}سرویس‌های موجود:${NC}"
-    ls /etc/systemd/system/backhaul-* 2>/dev/null | sed 's|/etc/systemd/system/||' | sed 's|.service||' | nl
+    echo -e "${CYAN}Available services:${NC}"
+    SERVICES=$(ls /etc/systemd/system/backhaul-*.service 2>/dev/null | sed 's|/etc/systemd/system/||' | sed 's|.service||')
+    
+    if [ -z "$SERVICES" ]; then
+        echo -e "${RED}No Backhaul services found!${NC}"
+        echo -e "${YELLOW}Please create a service first (option 4)${NC}"
+        return 1
+    fi
+    
+    echo "$SERVICES" | nl
     echo ""
     
-    read -p "$(echo -e ${YELLOW}نام سرویس را وارد کنید: ${NC})" SERVICE_NAME
+    read -p "Enter service name: " SERVICE_NAME
     
     if [ -z "$SERVICE_NAME" ]; then
-        echo -e "${RED}❌ نام سرویس الزامی است!${NC}"
+        echo -e "${RED}Error: Service name is required!${NC}"
         return 1
     fi
     
     echo ""
-    echo "عملیات مورد نظر را انتخاب کنید:"
-    echo "1) شروع سرویس"
-    echo "2) توقف سرویس" 
-    echo "3) ری‌استارت سرویس"
-    echo "4) وضعیت سرویس"
-    echo "5) مشاهده لاگ"
-    echo "6) فعال‌سازی خودکار"
-    echo "7) غیرفعال‌سازی خودکار"
+    echo "Select action:"
+    echo "1) Start service"
+    echo "2) Stop service" 
+    echo "3) Restart service"
+    echo "4) Service status"
+    echo "5) View logs"
+    echo "6) Enable auto-start"
+    echo "7) Disable auto-start"
+    echo ""
     
-    read -p "$(echo -e ${YELLOW}انتخاب شما: ${NC})" ACTION
+    read -p "Enter your choice: " ACTION
     
     case $ACTION in
-        1) systemctl start "$SERVICE_NAME" && echo -e "${GREEN}✅ سرویس شروع شد${NC}" ;;
-        2) systemctl stop "$SERVICE_NAME" && echo -e "${GREEN}✅ سرویس متوقف شد${NC}" ;;
-        3) systemctl restart "$SERVICE_NAME" && echo -e "${GREEN}✅ سرویس ری‌استارت شد${NC}" ;;
-        4) systemctl status "$SERVICE_NAME" ;;
-        5) journalctl -u "$SERVICE_NAME" -f ;;
-        6) systemctl enable "$SERVICE_NAME" && echo -e "${GREEN}✅ سرویس فعال شد${NC}" ;;
-        7) systemctl disable "$SERVICE_NAME" && echo -e "${GREEN}✅ سرویس غیرفعال شد${NC}" ;;
-        *) echo -e "${RED}❌ انتخاب نامعتبر!${NC}" ;;
+        1) 
+            systemctl start "$SERVICE_NAME" 
+            if [ $? -eq 0 ]; then
+                echo -e "${GREEN}Service started successfully!${NC}"
+            else
+                echo -e "${RED}Failed to start service!${NC}"
+                systemctl status "$SERVICE_NAME" --no-pager -l
+            fi
+            ;;
+        2) 
+            systemctl stop "$SERVICE_NAME" 
+            echo -e "${GREEN}Service stopped!${NC}"
+            ;;
+        3) 
+            systemctl restart "$SERVICE_NAME" 
+            if [ $? -eq 0 ]; then
+                echo -e "${GREEN}Service restarted successfully!${NC}"
+            else
+                echo -e "${RED}Failed to restart service!${NC}"
+                systemctl status "$SERVICE_NAME" --no-pager -l
+            fi
+            ;;
+        4) 
+            systemctl status "$SERVICE_NAME" --no-pager -l
+            ;;
+        5) 
+            echo -e "${BLUE}Press Ctrl+C to exit logs${NC}"
+            sleep 2
+            journalctl -u "$SERVICE_NAME" -f
+            ;;
+        6) 
+            systemctl enable "$SERVICE_NAME" 
+            echo -e "${GREEN}Service enabled for auto-start!${NC}"
+            ;;
+        7) 
+            systemctl disable "$SERVICE_NAME" 
+            echo -e "${GREEN}Service disabled from auto-start!${NC}"
+            ;;
+        *) 
+            echo -e "${RED}Error: Invalid selection!${NC}"
+            ;;
     esac
 }
 
 # View logs
 view_logs() {
-    echo -e "${BLUE}📋 مشاهده لاگ‌ها${NC}"
+    echo -e "${BLUE}Viewing logs...${NC}"
     echo ""
     
-    if [ -f "$LOG_FILE" ]; then
-        tail -n 50 "$LOG_FILE"
-    else
-        echo "لاگ‌های systemd:"
-        journalctl -u backhaul-* --no-pager -n 50
+    # List available services
+    SERVICES=$(ls /etc/systemd/system/backhaul-*.service 2>/dev/null | sed 's|/etc/systemd/system/||' | sed 's|.service||')
+    
+    if [ -z "$SERVICES" ]; then
+        echo -e "${RED}No Backhaul services found!${NC}"
+        return 1
     fi
+    
+    echo -e "${CYAN}Available services:${NC}"
+    echo "$SERVICES" | nl
+    echo ""
+    
+    read -p "Enter service name (or press Enter for all): " SERVICE_NAME
+    
+    if [ -n "$SERVICE_NAME" ]; then
+        journalctl -u "$SERVICE_NAME" --no-pager -n 50
+    else
+        journalctl -u "backhaul-*" --no-pager -n 50
+    fi
+}
+
+# Connection test
+test_connection() {
+    clear_screen
+    echo -e "${PURPLE}Connection Test${NC}"
+    echo ""
+    
+    # Check if services are running
+    SERVICES=$(systemctl list-units --type=service --state=active | grep backhaul | awk '{print $1}')
+    
+    if [ -z "$SERVICES" ]; then
+        echo -e "${RED}No active Backhaul services found!${NC}"
+        return 1
+    fi
+    
+    echo -e "${CYAN}Active services:${NC}"
+    echo "$SERVICES"
+    echo ""
+    
+    # Test network connectivity
+    echo -e "${YELLOW}Testing network connectivity...${NC}"
+    
+    # Check if client config exists and test connection
+    if [ -f "$CONFIG_DIR/client.toml" ]; then
+        SERVER_IP=$(grep "remote_addr" "$CONFIG_DIR/client.toml" | cut -d'"' -f2 | cut -d':' -f1)
+        SERVER_PORT=$(grep "remote_addr" "$CONFIG_DIR/client.toml" | cut -d'"' -f2 | cut -d':' -f2)
+        
+        echo -e "${BLUE}Testing connection to server: $SERVER_IP:$SERVER_PORT${NC}"
+        
+        if timeout 5 bash -c "</dev/tcp/$SERVER_IP/$SERVER_PORT" 2>/dev/null; then
+            echo -e "${GREEN}✓ Server is reachable${NC}"
+        else
+            echo -e "${RED}✗ Cannot reach server${NC}"
+        fi
+    fi
+    
+    # Show service status
+    echo ""
+    echo -e "${YELLOW}Service status:${NC}"
+    systemctl status backhaul-* --no-pager -l
 }
 
 # Uninstall Backhaul
 uninstall_backhaul() {
     clear_screen
-    echo -e "${RED}🗑️  حذف Backhaul${NC}"
+    echo -e "${RED}Uninstall Backhaul${NC}"
     echo ""
-    echo -e "${YELLOW}⚠️  این عمل تمام فایل‌ها و تنظیمات را حذف خواهد کرد!${NC}"
-    read -p "$(echo -e ${RED}آیا مطمئن هستید؟ [y/N]: ${NC})" CONFIRM
+    echo -e "${YELLOW}WARNING: This will remove all files and configurations!${NC}"
+    read -p "Are you sure? [y/N]: " CONFIRM
     
     if [[ $CONFIRM =~ ^[Yy]$ ]]; then
         # Stop and disable services
@@ -321,20 +555,20 @@ uninstall_backhaul() {
         
         systemctl daemon-reload
         
-        echo -e "${GREEN}✅ Backhaul به طور کامل حذف شد!${NC}"
+        echo -e "${GREEN}Backhaul completely removed!${NC}"
     else
-        echo -e "${YELLOW}❌ عملیات لغو شد${NC}"
+        echo -e "${YELLOW}Operation cancelled${NC}"
     fi
 }
 
 # Update Backhaul
 update_backhaul() {
-    echo -e "${BLUE}🔄 به‌روزرسانی Backhaul...${NC}"
+    echo -e "${BLUE}Updating Backhaul...${NC}"
     
     # Check current version
     if [ -f "$BINARY_PATH" ]; then
         CURRENT_VERSION=$($BINARY_PATH --version 2>/dev/null | head -n1 | awk '{print $2}' || echo "unknown")
-        echo -e "${CYAN}نسخه فعلی: $CURRENT_VERSION${NC}"
+        echo -e "${CYAN}Current version: $CURRENT_VERSION${NC}"
     fi
     
     # Stop services
@@ -344,28 +578,29 @@ update_backhaul() {
     if install_backhaul; then
         # Restart services
         systemctl start backhaul-* 2>/dev/null
-        echo -e "${GREEN}✅ به‌روزرسانی انجام شد!${NC}"
+        echo -e "${GREEN}Update completed!${NC}"
     else
-        echo -e "${RED}❌ خطا در به‌روزرسانی!${NC}"
+        echo -e "${RED}Update failed!${NC}"
     fi
 }
 
 # Main menu
 show_menu() {
     clear_screen
-    echo -e "${WHITE}🎯 منوی اصلی:${NC}"
+    echo -e "${WHITE}Main Menu:${NC}"
     echo ""
-    echo -e "${CYAN}1)${NC}  نصب Backhaul"
-    echo -e "${CYAN}2)${NC}  ایجاد کانفیگ سرور"
-    echo -e "${CYAN}3)${NC}  ایجاد کانفیگ کلاینت"
-    echo -e "${CYAN}4)${NC}  ایجاد سرویس systemd"
-    echo -e "${CYAN}5)${NC}  مدیریت سرویس"
-    echo -e "${CYAN}6)${NC}  مشاهده لاگ‌ها"
-    echo -e "${CYAN}7)${NC}  به‌روزرسانی"
-    echo -e "${CYAN}8)${NC}  حذف کامل"
-    echo -e "${CYAN}0)${NC}  خروج"
+    echo -e "${CYAN}1)${NC}  Install Backhaul"
+    echo -e "${CYAN}2)${NC}  Create Server Config"
+    echo -e "${CYAN}3)${NC}  Create Client Config"
+    echo -e "${CYAN}4)${NC}  Create systemd Service"
+    echo -e "${CYAN}5)${NC}  Manage Service"
+    echo -e "${CYAN}6)${NC}  View Logs"
+    echo -e "${CYAN}7)${NC}  Test Connection"
+    echo -e "${CYAN}8)${NC}  Update Backhaul"
+    echo -e "${CYAN}9)${NC}  Uninstall"
+    echo -e "${CYAN}0)${NC}  Exit"
     echo ""
-    echo -e "${BLUE}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${NC}"
+    echo -e "${BLUE}================================================${NC}"
 }
 
 # Main function
@@ -374,7 +609,8 @@ main() {
     
     while true; do
         show_menu
-        read -p "$(echo -e ${YELLOW}انتخاب شما: ${NC})" choice
+        echo ""
+        read -p "Enter your choice [0-9]: " choice
         echo ""
         
         case $choice in
@@ -384,19 +620,21 @@ main() {
             4) create_service ;;
             5) manage_service ;;
             6) view_logs ;;
-            7) update_backhaul ;;
-            8) uninstall_backhaul ;;
+            7) test_connection ;;
+            8) update_backhaul ;;
+            9) uninstall_backhaul ;;
             0) 
-                echo -e "${GREEN}👋 خروج از برنامه${NC}"
+                echo -e "${GREEN}Goodbye!${NC}"
                 exit 0 
                 ;;
             *)
-                echo -e "${RED}❌ انتخاب نامعتبر! لطفاً دوباره تلاش کنید.${NC}"
+                echo -e "${RED}Error: Invalid choice! Please try again.${NC}"
                 ;;
         esac
         
         echo ""
-        read -p "$(echo -e ${YELLOW}برای ادامه Enter را فشار دهید...${NC})"
+        echo -e "${YELLOW}Press Enter to continue...${NC}"
+        read
     done
 }
 
