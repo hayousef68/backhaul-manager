@@ -1,14 +1,14 @@
 #!/bin/bash
 
 # Backhaul Ultimate Pro Manager
-# Version: 9.5 (Final with Smart Fallback Downloader)
+# Version: 10.0 (Final with Manual Download Fallback)
 # Author: hayousef68
 # Feature-Rich implementation by Google Gemini, combining all user requests.
 
 # --- Configuration ---
 CONFIG_DIR="/etc/backhaul/configs"
 BINARY_PATH="/usr/local/bin/backhaul"
-SCRIPT_VERSION="v9.5"
+SCRIPT_VERSION="v10.0"
 
 # --- Colors ---
 RED='\033[0;31m'
@@ -53,54 +53,41 @@ install_or_update() {
     ARCH=$(detect_arch)
     if [ -z "$ARCH" ]; then echo -e "${RED}Error: Unsupported system architecture '$(uname -m)'.${NC}"; return; fi
     
+    local DOWNLOAD_URL="https://github.com/proxystore/backhaul/releases/download/v1.1.2/backhaul_linux_${ARCH}.zip"
     local FILE_NAME="backhaul.zip"
-    local PRIMARY_URL="https://github.com/proxystore/backhaul/releases/download/v1.1.2/backhaul_linux_${ARCH}.zip"
-    local FALLBACK_URL="https://ghproxy.com/${PRIMARY_URL}"
-    
-    # Ensure unzip is installed before anything else
-    if ! command -v unzip &> /dev/null; then
-        echo -e "${YELLOW}unzip is not installed. Installing...${NC}"
-        (apt-get update -y > /dev/null 2>&1 && apt-get install -y unzip > /dev/null 2>&1) || yum install -y unzip > /dev/null 2>&1 || { echo -e "${RED}Failed to install unzip. Please install it manually and try again.${NC}"; return; }
-    fi
-    
+
+    echo -e "${CYAN}Attempting to download advanced core automatically...${NC}"
     cd /tmp
 
-    # --- Smart Download Logic ---
-    local DOWNLOAD_SUCCESS=false
+    # Use curl for robust downloading
+    if ! curl -L --progress-bar -o "$FILE_NAME" "$DOWNLOAD_URL" || ! unzip -tq "$FILE_NAME" > /dev/null 2>&1; then
+        echo -e "\n${RED}Automatic download failed! This is likely due to a network restriction.${NC}"
+        echo -e "\n${PURPLE}--- Manual Installation Required ---${NC}"
+        echo -e "1. Download the file from this URL on your local computer:"
+        echo -e "   ${WHITE}${DOWNLOAD_URL}${NC}"
+        echo -e "2. Upload the downloaded file to your server (e.g., to the /tmp directory)."
+        read -p "3. Enter the full path to the uploaded file on your server: " MANUAL_PATH
 
-    # 1. Try Primary URL
-    echo -e "${CYAN}Attempting download from primary source (GitHub)...${NC}"
-    curl -L --progress-bar -o "$FILE_NAME" "$PRIMARY_URL"
-    
-    # 2. Validate the downloaded file
-    if unzip -tq "$FILE_NAME" > /dev/null 2>&1; then
-        echo -e "${GREEN}Primary download successful and validated.${NC}"
-        DOWNLOAD_SUCCESS=true
-    else
-        echo -e "\n${YELLOW}Primary download was corrupted or failed. Trying fallback source automatically...${NC}"
-        rm -f "$FILE_NAME" # Delete corrupted file
-        # 3. Try Fallback URL
-        curl -L --progress-bar -o "$FILE_NAME" "$FALLBACK_URL"
-        # 4. Validate the fallback download
-        if unzip -tq "$FILE_NAME" > /dev/null 2>&1; then
-            echo -e "${GREEN}Fallback download successful and validated.${NC}"
-            DOWNLOAD_SUCCESS=true
+        if [[ -z "$MANUAL_PATH" || ! -f "$MANUAL_PATH" ]]; then
+            echo -e "${RED}Error: File not found at the specified path.${NC}"
+            return
         fi
-    fi
-
-    # 5. Check final status
-    if [ "$DOWNLOAD_SUCCESS" = false ]; then
-        echo -e "\n${RED}Download failed from all sources!${NC}"
-        echo -e "${YELLOW}This indicates a persistent network issue. Please check your connection and firewall rules.${NC}"
-        rm -f "$FILE_NAME" # Cleanup
-        return
+        # Use the user-provided file
+        FILE_PATH="$MANUAL_PATH"
+    else
+        echo -e "${GREEN}Automatic download successful.${NC}"
+        FILE_PATH="/tmp/$FILE_NAME"
     fi
     
-    # --- Installation Logic ---
-    unzip -o "$FILE_NAME"
+    # Ensure unzip is installed
+    if ! command -v unzip &> /dev/null; then
+        echo -e "${YELLOW}unzip is not installed. Installing...${NC}"
+        (apt-get update -y > /dev/null 2>&1 && apt-get install -y unzip > /dev/null 2>&1) || yum install -y unzip > /dev/null 2>&1
+    fi
+    
+    unzip -o "$FILE_PATH"
     if [ ! -f "backhaul" ]; then
-        echo -e "${RED}Error: 'backhaul' binary not found in the downloaded zip file.${NC}"
-        rm -f "$FILE_NAME"
+        echo -e "${RED}Error: 'backhaul' binary not found in the provided zip file.${NC}"
         return
     fi
 
@@ -108,7 +95,11 @@ install_or_update() {
     mkdir -p "$CONFIG_DIR"
     mv backhaul "$BINARY_PATH"
     
-    rm -f "$FILE_NAME"
+    # Cleanup downloaded file if it was in /tmp
+    if [[ "$FILE_PATH" == "/tmp/backhaul.zip" ]]; then
+        rm -f "$FILE_PATH"
+    fi
+    
     echo -e "${GREEN}Backhaul Core v1.1.2 installed/updated successfully!${NC}"
 }
 
@@ -127,6 +118,9 @@ EOF
     echo -e "${GREEN}System TCP settings have been optimized for stability.${NC}"
 }
 
+# The rest of the script remains unchanged as it was correct.
+# This includes: configure_new_tunnel, generate_server_config, generate_client_config,
+# create_service, tunnel_management_menu, manage_single_tunnel, remove_backhaul, show_main_menu
 
 configure_new_tunnel() {
     clear
