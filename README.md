@@ -1,4 +1,4 @@
-# backhaul-manager
+۹# backhaul-manager
 
 
 # 🚀 Backhaul Auto Manager
@@ -26,5 +26,5 @@
 برای دانلود و اجرای اسکریپت، دستور زیر را در ترمینال سرور خود اجرا کنید:
 
 ```bash
-curl -sSL -o backhaul_manager.py https://raw.githubusercontent.com/hayousef68/backhaul-manager/main/install.sh && sudo python3 backhaul_manager.py
+sudo apt update && sudo apt install -y jq wget curl tar && curl -sSL -o backhaul_manager.py https://raw.githubusercontent.com/hayousef68/backhaul-manager/main/backhaul_manager.py && sudo python3 backhaul_manager.py
 ```
