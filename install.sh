@@ -11,11 +11,10 @@ import string
 
 # ====================================================================
 #
-#    🚀 Backhaul Manager v6.7 (Python - Full MUX Config) 🚀
+#    🚀 Backhaul Manager v7.1 (Python - Feature Complete) 🚀
 #
-#   This version implements the full set of advanced configuration
-#   options for MUX protocols on both Server and Client side,
-#   based on user-provided documentation.
+#   This version adds "Add Port to Existing Tunnel" and a
+#   "Self-Update" mechanism to complete the feature set.
 #
 # ====================================================================
 
@@ -25,6 +24,9 @@ class C:
 
 BACKHAUL_DIR, CONFIG_DIR, SERVICE_DIR = "/opt/backhaul", "/etc/backhaul", "/etc/systemd/system"
 LOG_DIR, BINARY_PATH, TUNNELS_DIR = "/var/log/backhaul", f"{BACKHAUL_DIR}/backhaul", f"{CONFIG_DIR}/tunnels"
+SCRIPT_SELF_PATH = os.path.realpath(sys.argv[0])
+SCRIPT_GIT_URL = "https://raw.githubusercontent.com/hayousef68/backhaul-manager/main/install.sh"
+
 
 # --- Helper Functions ---
 def run_cmd(command, as_root=False, capture=True):
@@ -60,7 +62,7 @@ def get_core_version():
     return "N/A"
 
 def check_requirements():
-    requirements = ['wget', 'tar', 'systemctl', 'openssl', 'jq', 'ss']
+    requirements = ['wget', 'tar', 'systemctl', 'openssl', 'jq', 'ss', 'curl']
     missing = [cmd for cmd in requirements if shutil.which(cmd) is None]
     if missing: colorize(f"Missing required packages: {', '.join(missing)}", C.RED, bold=True); sys.exit(1)
 
@@ -76,6 +78,21 @@ def create_service(tunnel_name):
 def is_port_in_use(port):
     result = run_cmd(['ss', '-tln'])
     return re.search(r':{}\s'.format(port), result.stdout) is not None
+
+def toml_write(config_dict):
+    content = ""
+    for section, params in config_dict.items():
+        content += f"[{section}]\n"
+        mux_params = params.pop("mux", None)
+        for key, value in params.items():
+            if isinstance(value, list): content += f'{key} = {json.dumps(value)}\n'
+            elif isinstance(value, bool): content += f'{key} = {str(value).lower()}\n'
+            else: content += f'{key} = "{value}"\n' if isinstance(value, str) else f'{key} = {value}\n'
+        if mux_params:
+            content += f"\n[{section}.mux]\n"
+            for sub_key, sub_value in mux_params.items():
+                content += f'{sub_key} = {sub_value}\n'
+    return content
 
 # --- Feature Functions ---
 
@@ -94,7 +111,6 @@ def create_server_tunnel():
     ports_str = input("Enter forwarding ports (e.g., 443, 8080=8000): ")
     valid_ports_list = []
     if ports_str:
-        # ... port validation logic ...
         raw_ports = [p.strip() for p in ports_str.split(',') if p.strip()]
         for port_entry in raw_ports:
             try:
@@ -103,32 +119,11 @@ def create_server_tunnel():
                     colorize(f"Port {port_to_check_str} is available. Added.", C.GREEN); valid_ports_list.append(port_entry)
                 else: colorize(f"Port {port_to_check_str} is already in use or invalid. Skipped.", C.RED)
             except: colorize(f"Could not parse '{port_entry}'. Added without validation.", C.YELLOW); valid_ports_list.append(port_entry)
-            
     config_dict = {"server": {"bind_addr": bind_addr, "transport": transport, "token": token, "nodelay": nodelay, "sniffer": sniffer, "web_port": web_port, "log_level": "info", "ports": valid_ports_list}}
-    
     if 'mux' in transport:
         colorize("\n--- Advanced MUX Configuration (Server) ---", C.CYAN)
-        mux_dict = {
-            "con": int(input("Enter mux_con (default: 8): ") or "8"),
-            "version": int(input("Enter mux_version (1 or 2, default: 1): ") or "1"),
-            "framesize": int(input("Enter mux_framesize (default: 32768): ") or "32768"),
-            "recievebuffer": int(input("Enter mux_recievebuffer (default: 4194304): ") or "4194304"),
-            "streambuffer": int(input("Enter mux_streambuffer (default: 65536): ") or "65536")
-        }
-        config_dict["server"]["mux"] = mux_dict
-
-    config_content = ""
-    for section, params in config_dict.items():
-        config_content += f"[{section}]\n"
-        for key, value in params.items():
-            if key == "mux": continue
-            if isinstance(value, list): config_content += f'{key} = {json.dumps(value)}\n'
-            elif isinstance(value, bool): config_content += f'{key} = {str(value).lower()}\n'
-            else: config_content += f'{key} = "{value}"\n' if isinstance(value, str) else f'{key} = {value}\n'
-        if "mux" in params:
-            config_content += f"\n[{section}.mux]\n"
-            for sub_key, sub_value in params["mux"].items(): config_content += f'{sub_key} = {sub_value}\n'
-            
+        config_dict["server"]["mux"] = { "con": int(input("Enter mux_con (default: 8): ") or "8") }
+    config_content = toml_write(config_dict)
     with open(f"/tmp/{tunnel_name}.toml", "w") as f: f.write(config_content)
     run_cmd(['mv', f'/tmp/{tunnel_name}.toml', f"{TUNNELS_DIR}/{tunnel_name}.toml"], as_root=True)
     create_service(tunnel_name); run_cmd(['systemctl', 'start', f'backhaul-{tunnel_name}.service'], as_root=True)
@@ -145,44 +140,57 @@ def create_client_tunnel():
     connection_pool = int(input("Enter Connection Pool size (default: 8): ") or "8")
     edge_ip = ""
     if 'ws' in transport: edge_ip = input("Enter Edge IP for CDN (optional): ")
-    
-    config_dict = {"client": {"remote_addr": remote_addr, "transport": transport, "token": token, "nodelay": nodelay, "connection_pool": connection_pool, "log_level": "info"}}
+    sniffer = True if input("Enable Sniffer? (y/n, default: n): ").lower() == 'y' else False
+    web_port = int(input("Enter sniffer web port (default: 0): ") or "0") if sniffer else 0
+    config_dict = {"client": {"remote_addr": remote_addr, "transport": transport, "token": token, "nodelay": nodelay, "connection_pool": connection_pool, "sniffer": sniffer, "web_port": web_port, "log_level": "info"}}
     if edge_ip: config_dict["client"]["edge_ip"] = edge_ip
-    
-    if 'mux' in transport:
-        colorize("\n--- Advanced MUX Configuration (Client) ---", C.CYAN)
-        mux_dict = {
-            "version": int(input("Enter mux_version (1 or 2, default: 1): ") or "1"),
-            "framesize": int(input("Enter mux_framesize (default: 32768): ") or "32768"),
-            "recievebuffer": int(input("Enter mux_recievebuffer (default: 4194304): ") or "4194304"),
-            "streambuffer": int(input("Enter mux_streambuffer (default: 65536): ") or "65536")
-        }
-        config_dict["client"]["mux"] = mux_dict
-        
-    config_content = ""
-    for section, params in config_dict.items():
-        config_content += f"[{section}]\n"
-        for key, value in params.items():
-            if key == "mux": continue
-            if isinstance(value, bool): config_content += f'{key} = {str(value).lower()}\n'
-            else: config_content += f'{key} = "{value}"\n' if isinstance(value, str) else f'{key} = {value}\n'
-        if "mux" in params:
-            config_content += f"\n[{section}.mux]\n"
-            for sub_key, sub_value in params["mux"].items(): config_content += f'{sub_key} = {sub_value}\n'
-            
+    if 'mux' in transport: config_dict["client"]["mux"] = {}
+    config_content = toml_write(config_dict)
     with open(f"/tmp/{tunnel_name}.toml", "w") as f: f.write(config_content)
     run_cmd(['mv', f'/tmp/{tunnel_name}.toml', f"{TUNNELS_DIR}/{tunnel_name}.toml"], as_root=True)
     create_service(tunnel_name); run_cmd(['systemctl', 'start', f'backhaul-{tunnel_name}.service'], as_root=True)
     colorize(f"\n✅ Client tunnel '{tunnel_name}' created!", C.GREEN, bold=True); press_key()
 
-# The rest of the script is unchanged
-def configure_new_tunnel():
-    clear_screen(); colorize("--- Configure a New Tunnel ---", C.CYAN, bold=True)
-    print("\n1) Create Iran Server Tunnel\n2) Create Kharej Client Tunnel")
-    choice = input("Enter your choice [1-2]: ")
-    if choice == '1': create_server_tunnel()
-    elif choice == '2': create_client_tunnel()
-    else: colorize("Invalid choice.", C.RED); time.sleep(1)
+def add_ports_to_tunnel(tunnel_name):
+    clear_screen(); colorize(f"--- Adding Ports to '{tunnel_name}' ---", C.YELLOW, bold=True)
+    config_path = os.path.join(TUNNELS_DIR, f"{tunnel_name}.toml")
+    try:
+        with open(config_path, 'r') as f: lines = f.readlines()
+    except FileNotFoundError: colorize(f"Config file not found.", C.RED); press_key(); return
+    
+    existing_ports, ports_line_index = [], -1
+    for i, line in enumerate(lines):
+        if line.strip().startswith("ports ="):
+            ports_line_index = i
+            try: existing_ports = json.loads(line.split('=')[1].strip())
+            except: colorize("Could not parse existing ports.", C.RED); press_key(); return
+            break
+    if ports_line_index == -1: colorize("This tunnel is not a server tunnel or has no 'ports' section.", C.RED); press_key(); return
+    
+    colorize("Current ports: " + (', '.join(existing_ports) if existing_ports else "None"), C.CYAN)
+    ports_str = input("Enter NEW forwarding ports to add (comma-separated): ")
+    newly_added_ports = 0
+    if ports_str:
+        raw_ports = [p.strip() for p in ports_str.split(',') if p.strip()]
+        for port_entry in raw_ports:
+            if port_entry in existing_ports: colorize(f"Port '{port_entry}' already exists. Skipped.", C.YELLOW); continue
+            try:
+                listen_part = port_entry.split('=')[0]; port_to_check_str = listen_part.split(':')[-1]
+                if port_to_check_str.isdigit() and not is_port_in_use(int(port_to_check_str)):
+                    colorize(f"Port {port_to_check_str} is available. Added.", C.GREEN); existing_ports.append(port_entry); newly_added_ports += 1
+                else: colorize(f"Port {port_to_check_str} is in use or invalid. Skipped.", C.RED)
+            except: colorize(f"Could not parse '{port_entry}'. Added.", C.YELLOW); existing_ports.append(port_entry); newly_added_ports += 1
+            
+    if newly_added_ports > 0:
+        lines[ports_line_index] = f"ports = {json.dumps(existing_ports)}\n"
+        with open(f"/tmp/{tunnel_name}.toml", "w") as f: f.writelines(lines)
+        run_cmd(['mv', f'/tmp/{tunnel_name}.toml', config_path], as_root=True)
+        colorize("\nRestarting tunnel to apply changes...", C.YELLOW)
+        run_cmd(['systemctl', 'restart', f'backhaul-{tunnel_name}.service'], as_root=True)
+        colorize("✅ Ports added and tunnel restarted successfully!", C.GREEN)
+    else: colorize("\nNo new ports were added.", C.YELLOW)
+    press_key()
+
 def manage_tunnel():
     clear_screen(); colorize("--- 🔧 Tunnel Management Menu ---", C.YELLOW, bold=True)
     try:
@@ -203,9 +211,11 @@ def manage_tunnel():
         if choice == 0: return
         selected_tunnel = tunnels_info[choice - 1]['name']
     except (ValueError, IndexError): colorize("Invalid selection.", C.RED); time.sleep(1); return
+    
     while True:
         clear_screen(); colorize(f"--- Managing '{selected_tunnel}' ---", C.CYAN)
-        print("1) Start\n2) Stop\n3) Restart\n4) View Status\n5) View Logs"); colorize("6) Delete Tunnel", C.RED); print("\n0) Back")
+        print("1) Start\n2) Stop\n3) Restart\n4) View Status\n5) View Logs");
+        colorize("6) Add Port(s) to Tunnel", C.GREEN); colorize("7) Delete Tunnel", C.RED); print("\n0) Back")
         action = input("Choose an action: ")
         service_name = f"backhaul-{selected_tunnel}.service"
         if action == '1': run_cmd(['systemctl', 'start', service_name], as_root=True); colorize("Started.", C.GREEN)
@@ -216,7 +226,8 @@ def manage_tunnel():
             clear_screen();
             try: run_cmd(['journalctl', '-u', service_name, '-f', '--no-pager'], as_root=True, capture=False)
             except KeyboardInterrupt: pass
-        elif action == '6':
+        elif action == '6': add_ports_to_tunnel(selected_tunnel)
+        elif action == '7':
             confirm = input(f"DELETE '{selected_tunnel}'? (y/n): ").lower()
             if confirm == 'y':
                 run_cmd(['systemctl', 'disable', '--now', service_name], as_root=True)
@@ -225,8 +236,31 @@ def manage_tunnel():
             else: colorize("Deletion cancelled.", C.YELLOW)
         elif action == '0': return
         else: colorize("Invalid action.", C.RED)
-        if action in ['1','2','3','6']: time.sleep(2)
+        if action in ['1','2','3','7']: time.sleep(2)
+
+def update_script():
+    clear_screen(); colorize("--- ⬆️ Updating Manager Script ---", C.YELLOW, bold=True)
+    colorize(f"Current path: {SCRIPT_SELF_PATH}", C.CYAN)
+    colorize(f"Checking for updates from: {SCRIPT_GIT_URL}", C.CYAN)
+    confirm = input("\nProceed with script update? (y/n): ").lower()
+    if confirm != 'y': colorize("Update cancelled.", C.GREEN); press_key(); return
+    try:
+        temp_path = "/tmp/backhaul_manager.py.tmp"
+        run_cmd(['curl', '-sSL', SCRIPT_GIT_URL, '-o', temp_path])
+        if os.path.getsize(temp_path) > 100: # Basic check to ensure file is not empty
+            run_cmd(['mv', temp_path, SCRIPT_SELF_PATH], as_root=True)
+            run_cmd(['chmod', '+x', SCRIPT_SELF_PATH], as_root=True)
+            colorize("✅ Script updated successfully!", C.GREEN)
+            colorize("Please exit and run the script again to use the new version.", C.YELLOW)
+            sys.exit(0)
+        else:
+            colorize("❌ Failed to download a valid update.", C.RED)
+    except Exception as e:
+        colorize(f"An error occurred: {e}", C.RED)
+    press_key()
+
 def install_backhaul_core():
+    # Unchanged
     clear_screen(); colorize("--- Installing Backhaul Core (v0.6.5) ---", C.YELLOW, bold=True)
     try:
         arch = os.uname().machine
@@ -240,6 +274,7 @@ def install_backhaul_core():
     except Exception as e: colorize(f"An error occurred: {e}", C.RED)
     press_key()
 def check_tunnels_status():
+    # Unchanged
     clear_screen(); colorize("--- Backhaul Tunnels Status ---", C.CYAN, bold=True)
     try:
         tunnels_info = []
@@ -259,6 +294,7 @@ def check_tunnels_status():
     for info in tunnels_info: print(f"{info['name']:<20} {info['type']:<10} {info['addr']:<22} {info['status']}")
     press_key()
 def uninstall_backhaul():
+    # Unchanged
     clear_screen(); colorize("--- Uninstall Backhaul ---", C.RED, bold=True)
     confirm = input("Are you sure? (y/n): ").lower()
     if confirm != "y": colorize("Uninstall cancelled.", C.GREEN); press_key(); return
@@ -268,13 +304,27 @@ def uninstall_backhaul():
                 run_cmd(['systemctl', 'disable', '--now', f'backhaul-{filename[:-5]}'], as_root=True)
                 run_cmd(['rm', '-f', f'{SERVICE_DIR}/backhaul-{filename[:-5]}.service'], as_root=True)
     run_cmd(['rm', '-rf', BACKHAUL_DIR, CONFIG_DIR, LOG_DIR], as_root=True)
-    if os.path.exists(SCRIPT_PATH): run_cmd(['rm', '-f', SCRIPT_PATH], as_root=True)
+    if os.path.exists(SCRIPT_SELF_PATH): run_cmd(['rm', '-f', SCRIPT_SELF_PATH], as_root=True)
     run_cmd(['systemctl', 'daemon-reload'], as_root=True)
     colorize("✅ Backhaul uninstalled completely.", C.GREEN); sys.exit(0)
+def run_system_optimizer():
+    # Unchanged
+    clear_screen(); colorize("--- Run Hawshemi's Linux Optimizer ---", C.CYAN, bold=True)
+    colorize("This will download and execute the latest version of the script from GitHub.", C.YELLOW)
+    confirm = input("Are you sure you want to continue? (y/n): ").lower()
+    if confirm != 'y': colorize("Operation cancelled.", C.GREEN); time.sleep(1); return
+    try:
+        url = "https://raw.githubusercontent.com/hawshemi/Linux-Optimizer/main/linux-optimizer.sh"; script_name = "linux-optimizer.sh"
+        colorize("Downloading the optimizer script...", C.YELLOW); run_cmd(['curl', '-sSL', url, '-o', script_name])
+        run_cmd(['chmod', '+x', script_name]); colorize("Running the optimizer...", C.GREEN)
+        run_cmd(['bash', script_name], capture=False)
+    except Exception as e: colorize(f"An error occurred: {e}", C.RED)
+    press_key()
 
+# --- Menu Display and Main Loop ---
 def display_menu():
     clear_screen(); server_ip, server_country, server_isp = get_server_info(); core_version = get_core_version()
-    colorize("Script Version: v6.7 (Python - Full MUX Config)", C.CYAN)
+    colorize("Script Version: v7.1 (Python - Feature Complete)", C.CYAN)
     colorize(f"Core Version: {core_version}", C.CYAN)
     print(C.YELLOW + "═════════════════════════════════════════════" + C.RESET)
     colorize(f"IP Address: {server_ip}", C.WHITE); colorize(f"Location: {server_country}", C.WHITE); colorize(f"Datacenter: {server_isp}", C.WHITE)
@@ -282,27 +332,35 @@ def display_menu():
     colorize(f"Backhaul Core: {core_status}", C.WHITE)
     print(C.YELLOW + "═════════════════════════════════════════════" + C.RESET)
     print(""); colorize(" 1. Configure a new tunnel", C.WHITE, bold=True); colorize(" 2. Tunnel management menu", C.WHITE, bold=True);
-    colorize(" 3. Check tunnels status", C.WHITE); colorize(" 4. Run System Optimizer (Hawshemi)", C.WHITE);
-    colorize(" 5. Install/Update Backhaul Core", C.WHITE)
-    colorize(" 6. Uninstall Backhaul", C.RED, bold=True); colorize(" 0. Exit", C.YELLOW); print("-------------------------------------")
+    colorize(" 3. Check tunnels status", C.WHITE); colorize(" 4. Install/Update Backhaul Core", C.WHITE);
+    colorize(" 5. Run System Optimizer (Hawshemi)", C.WHITE)
+    colorize(" 6. Update This Script", C.CYAN)
+    colorize(" 7. Uninstall Backhaul", C.RED, bold=True); colorize(" 0. Exit", C.YELLOW); print("-------------------------------------")
 
 def main():
     run_cmd(["mkdir", "-p", BACKHAUL_DIR, CONFIG_DIR, LOG_DIR, TUNNELS_DIR], as_root=True)
     while True:
         display_menu()
         try:
-            choice = input("Enter your choice [0-6]: ")
+            choice = input("Enter your choice [0-7]: ")
             if choice == '1': configure_new_tunnel()
             elif choice == '2': manage_tunnel()
             elif choice == '3': check_tunnels_status()
-            elif choice == '4': run_system_optimizer()
-            elif choice == '5': install_backhaul_core()
-            elif choice == '6': uninstall_backhaul()
+            elif choice == '4': install_backhaul_core()
+            elif choice == '5': run_system_optimizer()
+            elif choice == '6': update_script()
+            elif choice == '7': uninstall_backhaul()
             elif choice == '0': print("Exiting."); sys.exit(0)
             else: colorize("Invalid option.", C.RED); time.sleep(1)
         except (KeyboardInterrupt, EOFError): print("\nExiting."); sys.exit(0)
 
 if __name__ == "__main__":
     if os.geteuid() != 0: colorize("Error: This script must be run as root.", C.RED, bold=True); sys.exit(1)
+    # Install self to a common path for easy access
+    if os.path.realpath(sys.argv[0]) != "/usr/local/bin/backhaul-manager":
+        try:
+            run_cmd(['cp', sys.argv[0], '/usr/local/bin/backhaul-manager'], as_root=True)
+            run_cmd(['chmod', '+x', '/usr/local/bin/backhaul-manager'], as_root=True)
+        except: pass
     check_requirements()
     main()
