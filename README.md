@@ -9,11 +9,22 @@
 - ✅ نصب خودکار آخرین نسخه
 - ✅ ایجاد کانفیگ سرور و کلاینت
 - ✅ مدیریت systemd service
-- ✅ منوی کاملاً فارسی
 - ✅ پشتیبانی از TCP, WebSocket, WSS
 - ✅ مشاهده لاگ‌ها
 - ✅ به‌روزرسانی خودکار
 - ✅ حذف کامل
 
 ## 🚀 نصب سریع
-curl -sSL -o backhaul_manager.py https://raw.githubusercontent.com/hayousef68/backhaul-manager/main/install.sh && sudo python3 backhaul_manager.py
+
+
+# Backhaul Manager
+
+اسکریپت پیشرفته برای مدیریت تونل‌های Backhaul با رابط کاربری آسان.
+
+## نصب و اجرا
+
+برای دانلود و اجرای اسکریپت، دستور زیر را در ترمینال سرور خود اجرا کنید:
+
+```bash
+curl -sSL -o backhaul_manager.py [https://raw.githubusercontent.com/hayousef68/backhaul-manager/main/install.sh](https://raw.githubusercontent.com/hayousef68/backhaul-manager/main/install.sh) && sudo python3 backhaul_manager.py
+```
