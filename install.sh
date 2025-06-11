@@ -164,6 +164,14 @@ def create_client_tunnel():
     create_service(tunnel_name); run_cmd(['systemctl', 'start', f'backhaul-{tunnel_name}.service'], as_root=True)
     colorize(f"\n✅ Client tunnel '{tunnel_name}' created!", C.GREEN, bold=True); press_key()
 
+def configure_new_tunnel():
+    clear_screen(); colorize("--- Configure a New Tunnel ---", C.CYAN, bold=True)
+    print("\n1) Create Iran Server Tunnel\n2) Create Kharej Client Tunnel")
+    choice = input("Enter your choice [1-2]: ")
+    if choice == '1': create_server_tunnel()
+    elif choice == '2': create_client_tunnel()
+    else: colorize("Invalid choice.", C.RED); time.sleep(1)
+
 def manage_tunnel():
     clear_screen(); colorize("--- 🔧 Tunnel Management Menu ---", C.YELLOW, bold=True)
     try:
@@ -201,25 +209,12 @@ def manage_tunnel():
             elif action == '4': clear_screen(); run_cmd(['systemctl', 'status', service_name], as_root=True, capture=False); press_key()
             elif action == '5':
                 clear_screen()
-                try: run_cmd(['journalctl', '-u', service_name, '-f', '--no-pager'], as_root=True, capture=False)
+                try:
+                    run_cmd(['journalctl', '-u', service_name, '-f', '--no-pager'], as_root=True, capture=False)
                 except KeyboardInterrupt: pass
             elif action == '0': return
         else: colorize("Invalid action.", C.RED)
         if action in ['1','2','3']: time.sleep(2)
-
-def check_tunnels_status():
-    clear_screen(); colorize("--- Backhaul Tunnels Status ---", C.CYAN, bold=True)
-    try:
-        tunnels_info = [parse_tunnel_info(f) for f in sorted(os.listdir(TUNNELS_DIR)) if f.endswith(".toml")]
-    except FileNotFoundError: tunnels_info = []
-    if not tunnels_info: colorize("⚠️ No tunnels found.", C.YELLOW); press_key(); return
-    print(f"{C.BOLD}{'NAME':<20} {'TYPE':<10} {'PROTOCOL':<10} {'ADDRESS/PORT':<22} {'STATUS'}{C.RESET}\n{'----':<20} {'----':<10} {'--------':<10} {'------------':<22} {'------'}")
-    for info in tunnels_info:
-        result = run_cmd(['systemctl', 'is-active', f"backhaul-{info['name']}.service"])
-        status = f"{C.GREEN}● Active{C.RESET}" if result.stdout.strip() == "active" else f"{C.RED}● Inactive{C.RESET}"
-        safe_name = sanitize_for_print(info['name'])
-        print(f"{safe_name:<20} {info['type']:<10} {info['transport']:<10} {info['addr']:<22} {status}")
-    press_key()
 
 def install_backhaul_core():
     clear_screen(); colorize("--- Installing Backhaul Core (v0.6.5) ---", C.YELLOW, bold=True)
@@ -233,6 +228,20 @@ def install_backhaul_core():
         run_cmd(["mv", "/tmp/backhaul", BINARY_PATH], as_root=True); run_cmd(["chmod", "+x", BINARY_PATH], as_root=True)
         colorize("✅ Backhaul Core v0.6.5 installed successfully!", C.GREEN, bold=True)
     except Exception as e: colorize(f"An error occurred: {e}", C.RED)
+    press_key()
+
+def check_tunnels_status():
+    clear_screen(); colorize("--- Backhaul Tunnels Status ---", C.CYAN, bold=True)
+    try:
+        tunnels_info = [parse_tunnel_info(f) for f in sorted(os.listdir(TUNNELS_DIR)) if f.endswith(".toml")]
+    except FileNotFoundError: tunnels_info = []
+    if not tunnels_info: colorize("⚠️ No tunnels found.", C.YELLOW); press_key(); return
+    print(f"{C.BOLD}{'NAME':<20} {'TYPE':<10} {'PROTOCOL':<10} {'ADDRESS/PORT':<22} {'STATUS'}{C.RESET}\n{'----':<20} {'----':<10} {'--------':<10} {'------------':<22} {'------'}")
+    for info in tunnels_info:
+        result = run_cmd(['systemctl', 'is-active', f"backhaul-{info['name']}.service"])
+        status = f"{C.GREEN}● Active{C.RESET}" if result.stdout.strip() == "active" else f"{C.RED}● Inactive{C.RESET}"
+        safe_name = sanitize_for_print(info['name'])
+        print(f"{safe_name:<20} {info['type']:<10} {info['transport']:<10} {info['addr']:<22} {status}")
     press_key()
 
 def uninstall_backhaul():
