@@ -14,7 +14,7 @@ import string
 #    🚀 Backhaul Manager v7.1 (Python - Final with Status Display) 🚀
 #
 #   This version adds status verification after tunnel creation.
-#   This version is modified to show port/address in the management menu.
+#   This version is modified to show port/address and status in the management menu.
 #
 # ====================================================================
 
@@ -184,11 +184,11 @@ def manage_tunnel():
     tunnels_info = []
     try:
         # ===== MODIFICATION START =====
-        # Read each tunnel's config file to get its address and port.
+        # Read each tunnel's config to get address, port, and status.
         for filename in sorted(os.listdir(TUNNELS_DIR)):
             if filename.endswith(".toml"):
                 tunnel_name = filename[:-5]
-                addr = "N/A"  # Default value
+                addr = "N/A"
                 try:
                     with open(os.path.join(TUNNELS_DIR, filename), 'r') as f:
                         for line in f:
@@ -197,22 +197,26 @@ def manage_tunnel():
                                 break 
                 except IOError:
                     addr = "Read Error"
-                tunnels_info.append({'name': tunnel_name, 'addr': addr})
+                
+                # Check service status
+                result = run_cmd(['systemctl', 'is-active', f"backhaul-{tunnel_name}.service"])
+                status = f"{C.GREEN}● Active{C.RESET}" if result.stdout.strip() == "active" else f"{C.RED}● Inactive{C.RESET}"
+                
+                tunnels_info.append({'name': tunnel_name, 'addr': addr, 'status': status})
         # ===== MODIFICATION END =====
     except FileNotFoundError:
-        tunnels_info = [] # This line was already here, kept for safety
+        tunnels_info = []
 
     if not tunnels_info:
         colorize("⚠️ No tunnels found.", C.YELLOW); press_key(); return
     
-    # Print the header
-    print(f"{C.BOLD}{'#':<4} {'NAME':<20} {'ADDRESS/PORT':<22}{C.RESET}\n{'---':<4} {'----':<20} {'------------':<22}")
+    # ===== MODIFICATION START: Added STATUS to header =====
+    print(f"{C.BOLD}{'#':<4} {'NAME':<20} {'ADDRESS/PORT':<22} {'STATUS'}{C.RESET}\n{'---':<4} {'----':<20} {'------------':<22} {'------'}")
     
-    # ===== MODIFICATION START =====
-    # Loop through the populated info list and print name and address/port
+    # ===== MODIFICATION START: Added status to printout =====
     for i, info in enumerate(tunnels_info, 1):
         safe_name = sanitize_for_print(info['name'])
-        print(f"{i:<4} {safe_name:<20} {info['addr']:<22}")
+        print(f"{i:<4} {safe_name:<20} {info['addr']:<22} {info['status']}")
     # ===== MODIFICATION END =====
 
     try:
