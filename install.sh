@@ -1,716 +1,753 @@
 #!/bin/bash
 
-# =================================================================
-# Backhaul (bct) v0.6.5.1 Multi-Tunnel Manager
-# Version: 1.0
-# UI/UX and functionality inspired by the user-provided rathole_v2.sh script.
-# Core logic rewritten for back-channel-tunnel by Google Gemini.
-# =================================================================
+# Backhaul Management Script
+# Complete tunnel management solution with auto-detection and service management
+# Compatible with all Backhaul protocols: tcp, tcpmux, udp, ws, wss, wsmux, wssmux
 
-# --- Global Variables ---
-CONFIG_DIR="/root/bct-core"
-BCT_SOURCE_DIR="${CONFIG_DIR}/back-channel-tunnel-0.6.5.1"
-BCT_BINARY_PATH="/usr/local/bin/bct"
+# Colors for better UI
+RED='\033[0;31m'
+GREEN='\033[0;32m'
+YELLOW='\033[1;33m'
+BLUE='\033[0;34m'
+PURPLE='\033[0;35m'
+CYAN='\033[0;36m'
+WHITE='\033[1;37m'
+NC='\033[0m' # No Color
+
+# Configuration directories and files
+BACKHAUL_DIR="/opt/backhaul"
+CONFIG_DIR="/etc/backhaul"
 SERVICE_DIR="/etc/systemd/system"
+LOG_DIR="/var/log/backhaul"
+BINARY_PATH="$BACKHAUL_DIR/backhaul"
+TUNNELS_DIR="$CONFIG_DIR/tunnels"
 
-# --- Utility and UI Functions ---
-# (Using the same functions from the Rathole script for appearance)
-
-colorize() {
-    local color_code; case "$1" in "red") color_code="\033[31m";; "green") color_code="\033[32m";; "yellow") color_code="\033[33m";; "blue") color_code="\033[34m";; "magenta") color_code="\033[35m";; "cyan") color_code="\033[36m";; "white") color_code="\033[37m";; *) color_code="\033[0m";; esac
-    local style_code; case "$3" in "bold") style_code="\033[1m";; "underline") style_code="\033[4m";; *) style_code="\033[0m";; esac
-    echo -e "${style_code}${color_code}$2\033[0m";
+# Create necessary directories
+create_directories() {
+    sudo mkdir -p "$BACKHAUL_DIR" "$CONFIG_DIR" "$LOG_DIR" "$TUNNELS_DIR"
+    sudo chmod 755 "$BACKHAUL_DIR" "$CONFIG_DIR" "$LOG_DIR" "$TUNNELS_DIR"
 }
 
-press_key() { read -p "Press any key to continue..."; }
+# Print colored output
+print_color() {
+    printf "${1}${2}${NC}\n"
+}
 
-display_logo() {
-    colorize cyan "               __  .__           .__          "
-    colorize cyan "____________ _/  |_|  |__   ____ |  |   ____  "
-    colorize cyan "\_  __ \__  \\   __|  |  \ /  _ \|  | _/ __ \ "
-    colorize cyan " |  | \// __ \|  | |   Y  (  <_> |  |_\  ___/ "
-    colorize cyan " |__|  (____  |__| |___|  /\____/|____/\___  >"
-    colorize cyan "            \/          \/                 \/ "
+# Print header
+print_header() {
+    clear
+    print_color $CYAN "======================================================================"
+    print_color $CYAN "                     🚀 Backhaul Manager v2.0 🚀                    "
+    print_color $CYAN "       Lightning-fast reverse tunneling solution manager            "
+    print_color $CYAN "======================================================================"
     echo
-    colorize green "Version: ${YELLOW}1.0 (for bct-0.6.5.1)"
 }
 
-display_server_info() {
-    echo -e "\e[93mâ•گâ•گâ•گâ•گâ•گâ•گâ•گâ•گâ•گâ•گâ•گâ•گâ•گâ•گâ•گâ•گâ•گâ•گâ•گâ•گâ•گâ•گâ•گâ•گâ•گâ•گâ•گâ•گâ•گâ•گâ•گâ•گâ•گâ•گâ•گâ•گâ•گâ•گâ•گâ•گâ•گâ•گâ•گâ•گâ•گ\e[0m"
-    local SERVER_COUNTRY; SERVER_COUNTRY=$(curl -sS "http://ip-api.com/line?fields=country")
-    local SERVER_ISP; SERVER_ISP=$(curl -sS "http://ip-api.com/line?fields=isp")
-    colorize cyan "Location:   ${SERVER_COUNTRY:-N/A}"
-    colorize cyan "Datacenter: ${SERVER_ISP:-N/A}"
-}
+# Detect system architecture and OS
+detect_system() {
+    ARCH=$(uname -m)
+    case $ARCH in
+        x86_64|amd64)
+            ARCH="amd64"
+            ;;
+        i386|i686)
+            ARCH="386" 
+            ;;
+        aarch64|arm64)
+            ARCH="arm64"
+            ;;
+        armv7l)
+            ARCH="arm"
+            ;;
+        *)
+            print_color $RED "❌ Unsupported architecture: $ARCH"
+            exit 1
+            ;;
+    esac
 
-display_core_status() {
-    if [[ -f "$BCT_BINARY_PATH" ]]; then
-        colorize cyan "Backhaul Core (bct): ${GREEN}Installed"
-    else
-        colorize cyan "Backhaul Core (bct): ${RED}Not installed"
-    fi
-    echo -e "\e[93mâ•گâ•گâ•گâ•گâ•گâ•گâ•گâ•گâ•گâ•گâ•گâ•گâ•گâ•گâ•گâ•گâ•گâ•گâ•گâ•گâ•گâ•گâ•گâ•گâ•گâ•گâ•گâ•گâ•گâ•گâ•گâ•گâ•گâ•گâ•گâ•گâ•گâ•گâ•گâ•گâ•گâ•گâ•گâ•گâ•گ\e[0m"
-}
-
-# --- Core BCT Installation ---
-
-install_dependencies() {
-    colorize yellow "Checking and installing dependencies (build-essential, wget)..."
-    if ! command -v make &> /dev/null || ! command -v gcc &> /dev/null; then
-        apt-get update >/dev/null && apt-get install -y build-essential wget >/dev/null
-    fi
-}
-
-# This function contains the full C code for the modified bct.c
-get_modified_bct_c_code() {
-cat << 'EOF'
-/*
- * back-channel-tunnel
- *
- * Copyright (c) 2013-2020, Armijn Hemel
- * All rights reserved.
- *
- * For more information about this software and the license, see the LICENSE
- * file in the top level directory.
- *
- * This file contains code for a modified version of back-channel-tunnel
- * that includes TCPMux functionality, provided by Google Gemini.
- */
-
-#include <stdio.h>
-#include <stdlib.h>
-#include <string.h>
-#include <sys/types.h>
-#include <sys/socket.h>
-#include <netinet/in.h>
-#include <netinet/tcp.h>
-#include <arpa/inet.h>
-#include <netdb.h>
-#include <unistd.h>
-#include <fcntl.h>
-#include <errno.h>
-#include <signal.h>
-#include <sys/select.h>
-#include <stdbool.h>
-
-#define BUFSIZE 4096
-
-// from beej.us/guide/bgnet/
-void *get_in_addr(struct sockaddr *sa) {
-    if (sa->sa_family == AF_INET) {
-        return &(((struct sockaddr_in*)sa)->sin_addr);
-    }
-    return &(((struct sockaddr_in6*)sa)->sin6_addr);
-}
-
-int server_listen(int port) {
-    char port_str[6];
-    snprintf(port_str, sizeof(port_str), "%d", port);
-
-    int listener;
-    int yes=1;
-    int rv;
-
-    struct addrinfo hints, *ai, *p;
-
-    memset(&hints, 0, sizeof hints);
-    hints.ai_family = AF_UNSPEC;
-    hints.ai_socktype = SOCK_STREAM;
-    hints.ai_flags = AI_PASSIVE;
-
-    if ((rv = getaddrinfo(NULL, port_str, &hints, &ai)) != 0) {
-        fprintf(stderr, "selectserver: %s\n", gai_strerror(rv));
-        exit(1);
-    }
+    OS=$(uname -s | tr '[:upper:]' '[:lower:]')
+    case $OS in
+        linux)
+            OS="linux"
+            ;;
+        darwin)
+            OS="darwin"
+            ;;
+        *)
+            print_color $RED "❌ Unsupported OS: $OS"
+            exit 1
+            ;;
+    esac
     
-    for(p = ai; p != NULL; p = p->ai_next) {
-        listener = socket(p->ai_family, p->ai_socktype, p->ai_protocol);
-        if (listener < 0) { 
-            continue;
-        }
-        
-        setsockopt(listener, SOL_SOCKET, SO_REUSEADDR, &yes, sizeof(int));
-        if (bind(listener, p->ai_addr, p->ai_addrlen) < 0) {
-            close(listener);
-            continue;
-        }
-
-        break;
-    }
-
-    if (p == NULL) {
-        return -1;
-    }
-
-    freeaddrinfo(ai);
-
-    if (listen(listener, 10) == -1) {
-        return -1;
-    }
-
-    return listener;
+    print_color $GREEN "🔍 Detected System: $OS-$ARCH"
 }
 
-int client_connect(const char *hostname, int port) {
-    char port_str[6];
-    snprintf(port_str, sizeof(port_str), "%d", port);
-
-    int sockfd;
-    struct addrinfo hints, *servinfo, *p;
-    int rv;
-
-    memset(&hints, 0, sizeof hints);
-    hints.ai_family = AF_UNSPEC;
-    hints.ai_socktype = SOCK_STREAM;
-
-    if ((rv = getaddrinfo(hostname, port_str, &hints, &servinfo)) != 0) {
-        fprintf(stderr, "getaddrinfo: %s\n", gai_strerror(rv));
-        return -1;
-    }
-
-    for(p = servinfo; p != NULL; p = p->ai_next) {
-        if ((sockfd = socket(p->ai_family, p->ai_socktype, p->ai_protocol)) == -1) {
-            perror("client: socket");
-            continue;
-        }
-        if (connect(sockfd, p->ai_addr, p->ai_addrlen) == -1) {
-            close(sockfd);
-            perror("client: connect");
-            continue;
-        }
-        break;
-    }
-
-    if (p == NULL) {
-        fprintf(stderr, "client: failed to connect\n");
-        return -2;
-    }
-
-    freeaddrinfo(servinfo);
-    return sockfd;
-}
-
-void proxy_traffic(int sock1, int sock2) {
-    fd_set read_fds;
-    char buffer[BUFSIZE];
-    int n;
-
-    while (1) {
-        FD_ZERO(&read_fds);
-        FD_SET(sock1, &read_fds);
-        FD_SET(sock2, &read_fds);
-
-        if (select(FD_SETSIZE, &read_fds, NULL, NULL, NULL) < 0) {
-            perror("select");
-            break;
-        }
-
-        if (FD_ISSET(sock1, &read_fds)) {
-            n = read(sock1, buffer, sizeof(buffer));
-            if (n <= 0) break;
-            if (write(sock2, buffer, n) < 0) break;
-        }
-
-        if (FD_ISSET(sock2, &read_fds)) {
-            n = read(sock2, buffer, sizeof(buffer));
-            if (n <= 0) break;
-            if (write(sock1, buffer, n) < 0) break;
-        }
-    }
-    close(sock1);
-    close(sock2);
-}
-
-void tcpmux_server_mode(int port, const char *mapfile) {
-    int listen_fd, conn_fd, target_fd;
-    struct sockaddr_in servaddr, cli;
-    socklen_t len;
-    char buff[1024];
-    
-    printf("Starting TCPMux server on port %d, using map file '%s'\n", port, mapfile);
-    listen_fd = server_listen(port);
-
-    while (1) {
-        len = sizeof(cli);
-        conn_fd = accept(listen_fd, (struct sockaddr*)&cli, &len);
-        if (conn_fd < 0) { continue; }
-
-        if (fork() == 0) {
-            close(listen_fd);
-            memset(buff, 0, sizeof(buff));
-            int n = read(conn_fd, buff, sizeof(buff) - 1);
-            if (n <= 0) { close(conn_fd); exit(0); }
-            buff[strcspn(buff, "\r\n")] = 0;
-
-            printf("Client requested service: '%s'\n", buff);
-
-            FILE *fp = fopen(mapfile, "r");
-            if (!fp) { perror("fopen mapfile"); close(conn_fd); exit(1); }
-
-            char line[256], service[64], target_host[128], target_port_str[10];
-            bool found = false;
-            while(fgets(line, sizeof(line), fp)) {
-                if (sscanf(line, "%63[^:]:%127[^:]:%9s", service, target_host, target_port_str) == 3) {
-                    if (strcmp(service, buff) == 0) {
-                        found = true;
-                        break;
-                    }
-                }
-            }
-            fclose(fp);
-            
-            if (!found) {
-                fprintf(stderr, "Service '%s' not found in map file.\n", buff);
-                close(conn_fd);
-                exit(1);
-            }
-
-            int target_port = atoi(target_port_str);
-            printf("Forwarding to %s:%d\n", target_host, target_port);
-            target_fd = client_connect(target_host, target_port);
-            if (target_fd < 0) { close(conn_fd); exit(1); }
-            
-            proxy_traffic(conn_fd, target_fd);
-            exit(0);
-        }
-        close(conn_fd);
-    }
-}
-
-void tcpmux_client_mode(const char *host, int r_port, const char *svc_name, int l_port) {
-    int listen_fd, local_conn_fd, remote_fd;
-    struct sockaddr_in cli;
-    socklen_t len;
-    char buffer[128];
-
-    printf("TCPMux client for service '%s' via %s:%d, listening on local port %d\n", svc_name, host, r_port, l_port);
-    listen_fd = server_listen(l_port);
-
-    while(1) {
-        len = sizeof(cli);
-        local_conn_fd = accept(listen_fd, (struct sockaddr*)&cli, &len);
-        if (local_conn_fd < 0) { continue; }
-
-        if (fork() == 0) {
-            close(listen_fd);
-            remote_fd = client_connect(host, r_port);
-            if (remote_fd < 0) { close(local_conn_fd); exit(1); }
-
-            snprintf(buffer, sizeof(buffer), "%s\n", svc_name);
-            if (write(remote_fd, buffer, strlen(buffer)) < 0) {
-                perror("write service name");
-                close(local_conn_fd);
-                close(remote_fd);
-                exit(1);
-            }
-            proxy_traffic(local_conn_fd, remote_fd);
-            exit(0);
-        }
-        close(local_conn_fd);
-    }
-}
-
-void server_mode(int port) {
-    int listen_fd, client_fd, remote_fd;
-    struct sockaddr_in servaddr, cli;
-    socklen_t len;
-
-    listen_fd = server_listen(port);
-    if (listen_fd == -1) {
-        perror("listen");
-        exit(1);
-    }
-
-    while (1) {
-        len = sizeof(cli);
-        client_fd = accept(listen_fd, (struct sockaddr*)&cli, &len);
-        if (client_fd < 0) {
-            perror("accept");
-            continue;
-        }
-        remote_fd = accept(listen_fd, (struct sockaddr*)&cli, &len);
-        if (remote_fd < 0) {
-            perror("accept");
-            close(client_fd);
-            continue;
-        }
-
-        if (fork() == 0) {
-            close(listen_fd);
-            proxy_traffic(client_fd, remote_fd);
-            exit(0);
-        }
-        close(client_fd);
-        close(remote_fd);
-    }
-}
-
-void client_mode(int local_port, const char *remote_host, int remote_port) {
-    int listen_fd, local_conn_fd, remote_fd;
-    struct sockaddr_in cli;
-    socklen_t len;
-
-    listen_fd = server_listen(local_port);
-    if (listen_fd == -1) {
-        perror("listen");
-        exit(1);
-    }
-
-    while (1) {
-        len = sizeof(cli);
-        local_conn_fd = accept(listen_fd, (struct sockaddr*)&cli, &len);
-        if (local_conn_fd < 0) {
-            perror("accept");
-            continue;
-        }
-
-        remote_fd = client_connect(remote_host, remote_port);
-        if (remote_fd < 0) {
-            close(local_conn_fd);
-            continue;
-        }
-
-        if (fork() == 0) {
-            close(listen_fd);
-            proxy_traffic(local_conn_fd, remote_fd);
-            exit(0);
-        }
-        close(local_conn_fd);
-        close(remote_fd);
-    }
-}
-
-void usage(const char* prog) {
-    printf("Usage: %s -s <port> (for server mode)\n", prog);
-    printf("   or: %s -s <local_port> -c <remote_host>:<remote_port> (for client mode)\n", prog);
-    printf("   or: %s -M server <listen_port> <map_file> (for tcpmux server mode)\n", prog);
-    printf("   or: %s -M client <server_ip> <server_port> <service_name> <local_port> (for tcpmux client mode)\n", prog);
-    exit(1);
-}
-
-int main(int argc, char *argv[]) {
-    int ch;
-    int server_port = -1;
-    char *remote_spec = NULL;
-    int tcpmux_mode = 0;
-    int server_mode = -1; // -1: unset, 0: client, 1: server
-
-    if (argc > 1 && strcmp(argv[1], "-M") == 0) {
-        tcpmux_mode = 1;
-        // Shift args to parse tcpmux options
-        argc--;
-        argv++;
-    }
-
-    if (tcpmux_mode) {
-        if (argc < 2) usage(argv[0] - 1);
-        if (strcmp(argv[1], "server") == 0) {
-            if (argc != 4) usage(argv[0] - 1);
-            int port = atoi(argv[2]);
-            char* map_file = argv[3];
-            tcpmux_server_mode(port, map_file);
-        } else if (strcmp(argv[1], "client") == 0) {
-            if (argc != 6) usage(argv[0] - 1);
-            char* host = argv[2];
-            int r_port = atoi(argv[3]);
-            char* svc_name = argv[4];
-            int l_port = atoi(argv[5]);
-            tcpmux_client_mode(host, r_port, svc_name, l_port);
-        } else {
-            usage(argv[0] - 1);
-        }
-    } else {
-        while ((ch = getopt(argc, argv, "s:c:")) != -1) {
-            switch (ch) {
-                case 's':
-                    server_port = atoi(optarg);
-                    break;
-                case 'c':
-                    remote_spec = optarg;
-                    break;
-                default:
-                    usage(argv[0]);
-            }
-        }
-        if (server_port == -1) usage(argv[0]);
-        if (remote_spec) { // Client mode
-            char *host = strtok(remote_spec, ":");
-            char *port_str = strtok(NULL, ":");
-            if (!host || !port_str) usage(argv[0]);
-            int remote_port = atoi(port_str);
-            client_mode(server_port, host, remote_port);
-        } else { // Server mode
-            server_mode(server_port);
-        }
-    }
-    return 0;
-}
-EOF
-}
-
-install_core() {
-    if [[ -f "$BCT_BINARY_PATH" ]]; then
-        colorize green "Backhaul Core (bct) is already installed." "bold"
-        sleep 1; return;
-    fi
-    
-    install_dependencies
-    mkdir -p "$CONFIG_DIR"
-    
-    colorize yellow "Downloading back-channel-tunnel-0.6.5.1 source..."
-    local BCT_URL="https://github.com/agrinberg/back-channel-tunnel/archive/refs/tags/v0.6.5.1.tar.gz"
-    wget -q -O "${CONFIG_DIR}/bct.tar.gz" "$BCT_URL"
-    tar -xzf "${CONFIG_DIR}/bct.tar.gz" -C "$CONFIG_DIR"
-    
-    colorize yellow "Applying TCPMux patch..."
-    # Overwrite the original bct.c with our modified version
-    get_modified_bct_c_code > "${BCT_SOURCE_DIR}/bct.c"
-
-    colorize yellow "Compiling the core..."
-    (cd "$BCT_SOURCE_DIR" && make)
-    
-    if [[ -f "${BCT_SOURCE_DIR}/bct" ]]; then
-        cp "${BCT_SOURCE_DIR}/bct" "$BCT_BINARY_PATH"
-        colorize green "Backhaul Core (bct) installed successfully to $BCT_BINARY_PATH"
-    else
-        colorize red "Compilation failed! Please check if build-essential is installed."
+# Get latest version from GitHub
+get_latest_version() {
+    print_color $YELLOW "🔄 Checking for latest Backhaul version..."
+    LATEST_VERSION=$(curl -s https://api.github.com/repos/Musixal/Backhaul/releases/latest | grep '"tag_name":' | sed -E 's/.*"([^"]+)".*/\1/')
+    if [ -z "$LATEST_VERSION" ]; then
+        print_color $RED "❌ Failed to get latest version"
         exit 1
     fi
-    press_key
+    print_color $GREEN "✅ Latest version: $LATEST_VERSION"
 }
 
-# --- Tunnel Configuration & Management ---
-
-configure_tunnel() {
-    clear
-    colorize green "1) Configure for IRAN server (bct Server Mode)" "bold"
-    colorize magenta "2) Configure for KHAREJ server (bct Client Mode)" "bold"
-    echo
-    read -p "Enter your choice: " configure_choice
-    case "$configure_choice" in
-        1) configure_bct_server ;;
-        2) configure_bct_client ;;
-        *) colorize red "Invalid option!"; sleep 1 ;;
-    esac
-}
-
-configure_bct_server() {
-    clear
-    colorize cyan "Configuring IRAN server (bct Server)" "bold"
-    echo
+# Download and install Backhaul
+install_backhaul() {
+    print_header
+    print_color $YELLOW "📦 Installing Backhaul..."
     
-    PS3="Select Transport Mode: "
-    select transport in "TCP (Normal Mode)" "TCPMux (Multiplex Mode)"; do
-        if [ -n "$transport" ]; then break; fi
-    done
-
-    if [[ "$transport" == "TCP (Normal Mode)" ]]; then
-        read -p "[*] Enter port for bct to listen on (e.g., 443): " listen_port
-        local exec_start="$BCT_BINARY_PATH -s $listen_port"
-        local service_name="bct-server-tcp-${listen_port}"
-        
-        # Create systemd service
-        create_bct_service "$service_name" "BCT TCP Server on port $listen_port" "$exec_start"
-        
-    elif [[ "$transport" == "TCPMux (Multiplex Mode)" ]]; then
-        read -p "[*] Enter port for bct TCPMux to listen on (e.g., 8443): " listen_port
-        
-        colorize yellow "Now, define the services for the map file."
-        colorize yellow "Format: service_name:ip:port (e.g., ssh:127.0.0.1:22)"
-        local map_file_path="${CONFIG_DIR}/map_${listen_port}.conf"
-        echo "# Service map for bct on port ${listen_port}" > "$map_file_path"
-        while true; do
-            read -p "Add a service (or press Enter to finish): " service_line
-            if [ -z "$service_line" ]; then break; fi
-            echo "$service_line" >> "$map_file_path"
-        done
-        
-        local exec_start="$BCT_BINARY_PATH -M server $listen_port $map_file_path"
-        local service_name="bct-server-mux-${listen_port}"
-        create_bct_service "$service_name" "BCT TCPMux Server on port $listen_port" "$exec_start"
+    detect_system
+    get_latest_version
+    
+    DOWNLOAD_URL="https://github.com/Musixal/Backhaul/releases/download/${LATEST_VERSION}/backhaul_${OS}_${ARCH}.tar.gz"
+    
+    print_color $YELLOW "📥 Downloading from: $DOWNLOAD_URL"
+    
+    # Download and extract
+    cd /tmp
+    if ! curl -L -o "backhaul.tar.gz" "$DOWNLOAD_URL"; then
+        print_color $RED "❌ Failed to download Backhaul"
+        exit 1
     fi
-    press_key
-}
-
-configure_bct_client() {
-    clear
-    colorize magenta "Configuring KHAREJ server (bct Client)" "bold"
-    echo
     
-    PS3="Select Transport Mode: "
-    select transport in "TCP (Normal Mode)" "TCPMux (Multiplex Mode)"; do
-        if [ -n "$transport" ]; then break; fi
-    done
-
-    read -p "[*] Enter IRAN Server's public IP address: " remote_host
-    
-    if [[ "$transport" == "TCP (Normal Mode)" ]]; then
-        read -p "[*] Enter IRAN Server's listening port: " remote_port
-        read -p "[*] Enter a local port to listen on for the tunnel: " local_port
-        
-        local exec_start="$BCT_BINARY_PATH -s $local_port -c ${remote_host}:${remote_port}"
-        local service_name="bct-client-tcp-${local_port}"
-        create_bct_service "$service_name" "BCT TCP Client for ${remote_host}:${remote_port}" "$exec_start"
-
-    elif [[ "$transport" == "TCPMux (Multiplex Mode)" ]]; then
-        read -p "[*] Enter IRAN Server's TCPMux port: " remote_port
-        read -p "[*] Enter the service name to connect to (e.g., ssh): " service_name
-        read -p "[*] Enter a local port to listen on for this service: " local_port
-
-        local exec_start="$BCT_BINARY_PATH -M client $remote_host $remote_port $service_name $local_port"
-        local service_name="bct-client-mux-${local_port}-${service_name}"
-        create_bct_service "$service_name" "BCT TCPMux Client for service ${service_name}" "$exec_start"
+    if ! tar -xzf backhaul.tar.gz; then
+        print_color $RED "❌ Failed to extract Backhaul"
+        exit 1
     fi
-    press_key
+    
+    # Install binary
+    create_directories
+    sudo mv backhaul "$BINARY_PATH"
+    sudo chmod +x "$BINARY_PATH"
+    
+    # Create symlink for global access
+    sudo ln -sf "$BINARY_PATH" /usr/local/bin/backhaul
+    
+    print_color $GREEN "✅ Backhaul installed successfully!"
+    print_color $GREEN "📍 Binary location: $BINARY_PATH"
+    
+    read -p "Press Enter to continue..."
 }
 
-create_bct_service() {
-    local service_name=$1
-    local description=$2
-    local exec_start=$3
+# Generate TLS certificate
+generate_tls_cert() {
+    print_header
+    print_color $YELLOW "🔒 Generating TLS Certificate..."
+    
+    read -p "Enter domain or IP address: " domain
+    if [ -z "$domain" ]; then
+        domain="localhost"
+    fi
+    
+    CERT_DIR="$CONFIG_DIR/certs"
+    sudo mkdir -p "$CERT_DIR"
+    
+    # Generate private key
+    sudo openssl genpkey -algorithm RSA -out "$CERT_DIR/server.key" -pkeyopt rsa_keygen_bits:2048
+    
+    # Generate certificate
+    sudo openssl req -new -x509 -key "$CERT_DIR/server.key" -out "$CERT_DIR/server.crt" -days 365 -subj "/C=US/ST=State/L=City/O=Organization/CN=$domain"
+    
+    sudo chmod 600 "$CERT_DIR/server.key"
+    sudo chmod 644 "$CERT_DIR/server.crt"
+    
+    print_color $GREEN "✅ TLS Certificate generated successfully!"
+    print_color $GREEN "📍 Certificate: $CERT_DIR/server.crt"
+    print_color $GREEN "📍 Private Key: $CERT_DIR/server.key"
+    
+    read -p "Press Enter to continue..."
+}
 
-    colorize yellow "Creating systemd service: $service_name"
-    cat > "${SERVICE_DIR}/${service_name}.service" << EOF
+# Generate configuration file
+generate_config() {
+    local mode=$1
+    local tunnel_name=$2
+    local transport=$3
+    local bind_addr=$4
+    local remote_addr=$5
+    local token=$6
+    local ports_config=$7
+    
+    config_file="$TUNNELS_DIR/${tunnel_name}.toml"
+    
+    if [ "$mode" == "server" ]; then
+        cat > "$config_file" << EOF
+[server]
+bind_addr = "$bind_addr"
+transport = "$transport"
+token = "$token"
+keepalive_period = 75
+nodelay = true
+heartbeat = 40
+channel_size = 2048
+sniffer = false
+web_port = 2060
+sniffer_log = "$LOG_DIR/${tunnel_name}.json"
+log_level = "info"
+accept_udp = false
+EOF
+
+        # Add SSL certificates for secure transports
+        if [[ "$transport" == "wss" || "$transport" == "wssmux" ]]; then
+            cat >> "$config_file" << EOF
+tls_cert = "$CONFIG_DIR/certs/server.crt"
+tls_key = "$CONFIG_DIR/certs/server.key"
+EOF
+        fi
+
+        # Add multiplexing settings for mux transports
+        if [[ "$transport" == "tcpmux" || "$transport" == "wsmux" || "$transport" == "wssmux" ]]; then
+            cat >> "$config_file" << EOF
+mux_con = 8
+mux_version = 1
+mux_framesize = 32768
+mux_recievebuffer = 4194304
+mux_streambuffer = 65536
+EOF
+        fi
+
+        # Add ports configuration
+        if [ ! -z "$ports_config" ]; then
+            echo "ports = [" >> "$config_file"
+            IFS=',' read -ra PORTS <<< "$ports_config"
+            for port in "${PORTS[@]}"; do
+                echo "    \"$port\"," >> "$config_file"
+            done
+            echo "]" >> "$config_file"
+        else
+            echo "ports = []" >> "$config_file"
+        fi
+
+    else # client mode
+        cat > "$config_file" << EOF
+[client]
+remote_addr = "$remote_addr"
+transport = "$transport"
+token = "$token"
+connection_pool = 8
+aggressive_pool = false
+keepalive_period = 75
+dial_timeout = 10
+retry_interval = 3
+nodelay = true
+sniffer = false
+web_port = 2061
+sniffer_log = "$LOG_DIR/${tunnel_name}.json"
+log_level = "info"
+EOF
+
+        # Add edge IP for WebSocket transports
+        if [[ "$transport" == "ws" || "$transport" == "wss" || "$transport" == "wsmux" || "$transport" == "wssmux" ]]; then
+            echo 'edge_ip = ""' >> "$config_file"
+        fi
+
+        # Add multiplexing settings for mux transports
+        if [[ "$transport" == "tcpmux" || "$transport" == "wsmux" || "$transport" == "wssmux" ]]; then
+            cat >> "$config_file" << EOF
+mux_version = 1
+mux_framesize = 32768
+mux_recievebuffer = 4194304
+mux_streambuffer = 65536
+EOF
+        fi
+    fi
+}
+
+# Create systemd service
+create_service() {
+    local tunnel_name=$1
+    local config_file="$TUNNELS_DIR/${tunnel_name}.toml"
+    local service_file="$SERVICE_DIR/backhaul-${tunnel_name}.service"
+    
+    sudo tee "$service_file" > /dev/null << EOF
 [Unit]
-Description=${description}
+Description=Backhaul Tunnel Service - $tunnel_name
 After=network.target
+StartLimitIntervalSec=0
 
 [Service]
 Type=simple
-ExecStart=${exec_start}
+ExecStart=$BINARY_PATH -c $config_file
 Restart=always
 RestartSec=3
+User=root
+LimitNOFILE=1048576
+StandardOutput=journal
+StandardError=journal
 
 [Install]
 WantedBy=multi-user.target
 EOF
 
-    systemctl daemon-reload
-    systemctl enable --now "${service_name}.service"
-    
-    if systemctl is-active --quiet "$service_name"; then
-        colorize green "Service '$service_name' created, enabled, and started successfully."
-    else
-        colorize red "Failed to start service '$service_name'. Check logs with 'journalctl -u $service_name'."
-    fi
+    sudo systemctl daemon-reload
+    sudo systemctl enable "backhaul-${tunnel_name}.service"
 }
 
-tunnel_management() {
-    clear
-    colorize cyan "List of existing bct services to manage:" "bold"
+# Create tunnel (Server/Iran)
+create_server_tunnel() {
+    print_header
+    print_color $GREEN "🇮🇷 Creating Iran Server Tunnel"
     echo
     
-    mapfile -t services < <(find "$SERVICE_DIR" -name "bct-*.service" -printf "%f\n")
-    
-    if [ ${#services[@]} -eq 0 ]; then
-        colorize red "No bct tunnels found."
-        press_key
+    read -p "Enter tunnel name: " tunnel_name
+    if [ -z "$tunnel_name" ]; then
+        print_color $RED "❌ Tunnel name cannot be empty"
         return
     fi
     
-    PS3="Enter your choice (0 to return): "
-    select service in "${services[@]}"; do
-        if [ -n "$service" ]; then break; fi
-    done
-    if [ -z "$service" ]; then return; fi
-
-    clear
-    colorize cyan "Managing tunnel: $service" "bold"
+    print_color $CYAN "Available transport protocols:"
+    print_color $WHITE "1) tcp      - Simple TCP transport"
+    print_color $WHITE "2) tcpmux   - TCP with multiplexing"
+    print_color $WHITE "3) udp      - UDP transport"
+    print_color $WHITE "4) ws       - WebSocket transport"
+    print_color $WHITE "5) wss      - Secure WebSocket transport"
+    print_color $WHITE "6) wsmux    - WebSocket with multiplexing"
+    print_color $WHITE "7) wssmux   - Secure WebSocket with multiplexing"
     echo
-    PS3="Enter your choice: "
-    select choice in "Restart" "Stop" "Start" "View Status" "View Logs" "Remove Tunnel" "Return"; do
-        case $choice in
-            "Restart") systemctl restart "$service"; colorize yellow "Restarting...";;
-            "Stop") systemctl stop "$service"; colorize red "Stopping...";;
-            "Start") systemctl start "$service"; colorize green "Starting...";;
-            "View Status") systemctl status "$service" -n 20 --no-pager; press_key;;
-            "View Logs") journalctl -u "$service" -f --no-pager;;
-            "Remove Tunnel")
-                read -p "Are you sure you want to remove this tunnel? (y/n): " confirm
-                if [[ $confirm == [yY] ]]; then
-                    systemctl disable --now "$service" >/dev/null 2>&1
-                    rm -f "${SERVICE_DIR}/${service}"
-                    systemctl daemon-reload
-                    colorize red "Tunnel $service removed."
-                fi
-                break
-                ;;
-            "Return") break;;
-        esac
-    done
-    sleep 1
-}
-
-check_tunnel_status() {
-    clear
-    colorize yellow "Checking all bct services status..." "bold"
-    echo
-    systemctl list-units --type=service --all "bct-*.service"
-    press_key
-}
-
-# --- System Optimization (from Hawshemi) ---
-hawshemi_script() {
-    clear
-    colorize magenta "Special thanks to Hawshemi, the author of optimizer script..." "bold"
-    sleep 2
-    if [[ "$(lsb_release -is)" != "Ubuntu" ]]; then
-        colorize red "The operating system is not Ubuntu. Skipping." "bold"
-        sleep 2; return;
-    fi
     
-    # Backing up and applying sysctl optimizations...
-    cp /etc/sysctl.conf /etc/sysctl.conf.bak
-    sed -i -e '/fs.file-max/d' -e '/net.core.default_qdisc/d' -e '/net.ipv4.tcp_congestion_control/d' /etc/sysctl.conf
-    cat <<EOF >> /etc/sysctl.conf
-fs.file-max = 67108864
-net.core.default_qdisc = fq_codel
-net.core.netdev_max_backlog = 32768
-net.core.somaxconn = 65536
-net.ipv4.tcp_congestion_control = bbr
-net.ipv4.tcp_fastopen = 3
-net.ipv4.tcp_max_syn_backlog = 20480
-net.ipv4.tcp_max_tw_buckets = 1440000
-net.ipv4.tcp_window_scaling = 1
-EOF
-    sysctl -p >/dev/null
-    colorize green "Network is Optimized."
-
-    # Optimizing ulimits...
-    echo "ulimit -n 1048576" >> /etc/profile
-    source /etc/profile
-    colorize green "System Limits are Optimized."
-    
-    read -p "Reboot now? (Recommended) (y/n): " choice
-    if [[ "$choice" == 'y' || "$choice" == 'Y' ]]; then
-        reboot
-    fi
-    press_key
-}
-
-# --- Main Menu Loop ---
-while true; do
-    clear
-    display_logo
-    display_server_info
-    display_core_status
-    echo
-    colorize green " 1. Configure a new tunnel [bct]" "bold"
-    colorize red " 2. Tunnel management menu" "bold"
-    colorize cyan " 3. Check tunnels status" "bold"
-    echo " 4. Optimize network & system limits"
-    echo " 5. Install/Re-install bct core"
-    echo " 0. Exit"
-    echo
-    echo "-------------------------------"
-    read -p "Enter your choice [0-5]: " choice
-    case $choice in
-        1) configure_tunnel ;;
-        2) tunnel_management ;;
-        3) check_tunnel_status ;;
-        4) hawshemi_script ;;
-        5) install_core ;;
-        0) exit 0 ;;
-        *) colorize red "Invalid option!" && sleep 1 ;;
+    read -p "Choose transport protocol (1-7): " transport_choice
+    case $transport_choice in
+        1) transport="tcp" ;;
+        2) transport="tcpmux" ;;
+        3) transport="udp" ;;
+        4) transport="ws" ;;
+        5) transport="wss" ;;
+        6) transport="wsmux" ;;
+        7) transport="wssmux" ;;
+        *) transport="tcp" ;;
     esac
-done
+    
+    read -p "Enter bind address (default: 0.0.0.0:3080): " bind_addr
+    if [ -z "$bind_addr" ]; then
+        bind_addr="0.0.0.0:3080"
+    fi
+    
+    read -p "Enter authentication token: " token
+    if [ -z "$token" ]; then
+        token=$(openssl rand -hex 16)
+        print_color $YELLOW "🔑 Generated token: $token"
+    fi
+    
+    print_color $CYAN "Port configuration examples:"
+    print_color $WHITE "443         - Listen on port 443"
+    print_color $WHITE "443-600     - Listen on port range 443-600"
+    print_color $WHITE "443=5201    - Listen on 443, forward to 5201"
+    print_color $WHITE "443=1.1.1.1:5201 - Listen on 443, forward to 1.1.1.1:5201"
+    echo
+    read -p "Enter ports configuration (comma separated, press Enter to skip): " ports_config
+    
+    # Check if SSL certificates are needed
+    if [[ "$transport" == "wss" || "$transport" == "wssmux" ]]; then
+        if [ ! -f "$CONFIG_DIR/certs/server.crt" ]; then
+            print_color $YELLOW "⚠️  SSL certificates required for $transport"
+            read -p "Generate SSL certificates now? (y/n): " gen_ssl
+            if [[ "$gen_ssl" == "y" || "$gen_ssl" == "Y" ]]; then
+                generate_tls_cert
+            else
+                print_color $RED "❌ SSL certificates required. Aborting."
+                return
+            fi
+        fi
+    fi
+    
+    generate_config "server" "$tunnel_name" "$transport" "$bind_addr" "" "$token" "$ports_config"
+    create_service "$tunnel_name"
+    
+    sudo systemctl start "backhaul-${tunnel_name}.service"
+    
+    print_color $GREEN "✅ Server tunnel '$tunnel_name' created and started!"
+    print_color $GREEN "📍 Config: $TUNNELS_DIR/${tunnel_name}.toml"
+    print_color $GREEN "🔑 Token: $token"
+    print_color $GREEN "🌐 Bind Address: $bind_addr"
+    print_color $GREEN "🚀 Transport: $transport"
+    
+    read -p "Press Enter to continue..."
+}
+
+# Create tunnel (Client/Kharej)
+create_client_tunnel() {
+    print_header
+    print_color $BLUE "🌍 Creating Kharej Client Tunnel"
+    echo
+    
+    read -p "Enter tunnel name: " tunnel_name
+    if [ -z "$tunnel_name" ]; then
+        print_color $RED "❌ Tunnel name cannot be empty"
+        return
+    fi
+    
+    print_color $CYAN "Available transport protocols:"
+    print_color $WHITE "1) tcp      - Simple TCP transport"
+    print_color $WHITE "2) tcpmux   - TCP with multiplexing"
+    print_color $WHITE "3) udp      - UDP transport"
+    print_color $WHITE "4) ws       - WebSocket transport"
+    print_color $WHITE "5) wss      - Secure WebSocket transport"
+    print_color $WHITE "6) wsmux    - WebSocket with multiplexing"
+    print_color $WHITE "7) wssmux   - Secure WebSocket with multiplexing"
+    echo
+    
+    read -p "Choose transport protocol (1-7): " transport_choice
+    case $transport_choice in
+        1) transport="tcp" ;;
+        2) transport="tcpmux" ;;
+        3) transport="udp" ;;
+        4) transport="ws" ;;
+        5) transport="wss" ;;
+        6) transport="wsmux" ;;
+        7) transport="wssmux" ;;
+        *) transport="tcp" ;;
+    esac
+    
+    read -p "Enter server address (Iran server IP:PORT): " remote_addr
+    if [ -z "$remote_addr" ]; then
+        print_color $RED "❌ Server address cannot be empty"
+        return
+    fi
+    
+    read -p "Enter authentication token: " token
+    if [ -z "$token" ]; then
+        print_color $RED "❌ Authentication token cannot be empty"
+        return
+    fi
+    
+    # Ask for edge IP if using WebSocket transports
+    if [[ "$transport" == "ws" || "$transport" == "wss" || "$transport" == "wsmux" || "$transport" == "wssmux" ]]; then
+        read -p "Enter edge IP (optional, for CDN): " edge_ip
+    fi
+    
+    generate_config "client" "$tunnel_name" "$transport" "" "$remote_addr" "$token" ""
+    
+    # Add edge IP to config if provided
+    if [ ! -z "$edge_ip" ]; then
+        sed -i "s/edge_ip = \"\"/edge_ip = \"$edge_ip\"/" "$TUNNELS_DIR/${tunnel_name}.toml"
+    fi
+    
+    create_service "$tunnel_name"
+    sudo systemctl start "backhaul-${tunnel_name}.service"
+    
+    print_color $GREEN "✅ Client tunnel '$tunnel_name' created and started!"
+    print_color $GREEN "📍 Config: $TUNNELS_DIR/${tunnel_name}.toml"
+    print_color $GREEN "🎯 Server: $remote_addr"
+    print_color $GREEN "🚀 Transport: $transport"
+    
+    read -p "Press Enter to continue..."
+}
+
+# List all tunnels
+list_tunnels() {
+    print_header
+    print_color $CYAN "📋 Active Tunnels"
+    echo
+    
+    if [ ! -d "$TUNNELS_DIR" ] || [ -z "$(ls -A $TUNNELS_DIR 2>/dev/null)" ]; then
+        print_color $YELLOW "⚠️  No tunnels found"
+        read -p "Press Enter to continue..."
+        return
+    fi
+    
+    printf "%-20s %-10s %-15s %-10s %-15s\n" "NAME" "TYPE" "TRANSPORT" "STATUS" "ADDRESS"
+    printf "%-20s %-10s %-15s %-10s %-15s\n" "----" "----" "---------" "------" "-------"
+    
+    for config_file in "$TUNNELS_DIR"/*.toml; do
+        if [ -f "$config_file" ]; then
+            tunnel_name=$(basename "$config_file" .toml)
+            
+            # Determine type (server or client)
+            if grep -q "\[server\]" "$config_file"; then
+                tunnel_type="🇮🇷 Iran"
+                address=$(grep "bind_addr" "$config_file" | cut -d'"' -f2)
+            else
+                tunnel_type="🌍 Kharej"
+                address=$(grep "remote_addr" "$config_file" | cut -d'"' -f2)
+            fi
+            
+            transport=$(grep "transport" "$config_file" | cut -d'"' -f2)
+            
+            # Check service status
+            if systemctl is-active --quiet "backhaul-${tunnel_name}.service"; then
+                status="${GREEN}●${NC} Active"
+            else
+                status="${RED}●${NC} Inactive"
+            fi
+            
+            printf "%-20s %-10s %-15s %-22s %-15s\n" "$tunnel_name" "$tunnel_type" "$transport" "$status" "$address"
+        fi
+    done
+    
+    echo
+    read -p "Press Enter to continue..."
+}
+
+# Manage tunnel (start/stop/restart/status)
+manage_tunnel() {
+    print_header
+    print_color $YELLOW "🔧 Tunnel Management"
+    echo
+    
+    if [ ! -d "$TUNNELS_DIR" ] || [ -z "$(ls -A $TUNNELS_DIR 2>/dev/null)" ]; then
+        print_color $YELLOW "⚠️  No tunnels found"
+        read -p "Press Enter to continue..."
+        return
+    fi
+    
+    print_color $CYAN "Available tunnels:"
+    i=1
+    declare -a tunnel_names
+    for config_file in "$TUNNELS_DIR"/*.toml; do
+        if [ -f "$config_file" ]; then
+            tunnel_name=$(basename "$config_file" .toml)
+            tunnel_names[$i]=$tunnel_name
+            
+            if systemctl is-active --quiet "backhaul-${tunnel_name}.service"; then
+                status="${GREEN}[Active]${NC}"
+            else
+                status="${RED}[Inactive]${NC}"
+            fi
+            
+            printf "%d) %s %s\n" $i "$tunnel_name" "$status"
+            ((i++))
+        fi
+    done
+    
+    echo
+    read -p "Select tunnel number: " tunnel_num
+    
+    if [[ ! "$tunnel_num" =~ ^[0-9]+$ ]] || [ "$tunnel_num" -lt 1 ] || [ "$tunnel_num" -ge "$i" ]; then
+        print_color $RED "❌ Invalid selection"
+        read -p "Press Enter to continue..."
+        return
+    fi
+    
+    selected_tunnel=${tunnel_names[$tunnel_num]}
+    
+    echo
+    print_color $CYAN "Management options for '$selected_tunnel':"
+    print_color $WHITE "1) Start tunnel"
+    print_color $WHITE "2) Stop tunnel"
+    print_color $WHITE "3) Restart tunnel"
+    print_color $WHITE "4) Show status"
+    print_color $WHITE "5) View logs"
+    print_color $WHITE "6) Delete tunnel"
+    echo
+    
+    read -p "Choose action (1-6): " action
+    
+    case $action in
+        1)
+            sudo systemctl start "backhaul-${selected_tunnel}.service"
+            print_color $GREEN "✅ Tunnel '$selected_tunnel' started"
+            ;;
+        2)
+            sudo systemctl stop "backhaul-${selected_tunnel}.service"
+            print_color $YELLOW "⏹️  Tunnel '$selected_tunnel' stopped"
+            ;;
+        3)
+            sudo systemctl restart "backhaul-${selected_tunnel}.service"
+            print_color $GREEN "🔄 Tunnel '$selected_tunnel' restarted"
+            ;;
+        4)
+            systemctl status "backhaul-${selected_tunnel}.service"
+            ;;
+        5)
+            journalctl -u "backhaul-${selected_tunnel}.service" -n 50 -f
+            ;;
+        6)
+            read -p "Are you sure you want to delete tunnel '$selected_tunnel'? (y/n): " confirm
+            if [[ "$confirm" == "y" || "$confirm" == "Y" ]]; then
+                sudo systemctl stop "backhaul-${selected_tunnel}.service"
+                sudo systemctl disable "backhaul-${selected_tunnel}.service"
+                sudo rm -f "$SERVICE_DIR/backhaul-${selected_tunnel}.service"
+                sudo rm -f "$TUNNELS_DIR/${selected_tunnel}.toml"
+                sudo systemctl daemon-reload
+                print_color $GREEN "✅ Tunnel '$selected_tunnel' deleted"
+            fi
+            ;;
+        *)
+            print_color $RED "❌ Invalid action"
+            ;;
+    esac
+    
+    if [[ "$action" != "5" ]]; then
+        read -p "Press Enter to continue..."
+    fi
+}
+
+# View tunnel configuration
+view_config() {
+    print_header
+    print_color $CYAN "📄 View Tunnel Configuration"
+    echo
+    
+    if [ ! -d "$TUNNELS_DIR" ] || [ -z "$(ls -A $TUNNELS_DIR 2>/dev/null)" ]; then
+        print_color $YELLOW "⚠️  No tunnels found"
+        read -p "Press Enter to continue..."
+        return
+    fi
+    
+    print_color $CYAN "Available tunnels:"
+    i=1
+    declare -a tunnel_names
+    for config_file in "$TUNNELS_DIR"/*.toml; do
+        if [ -f "$config_file" ]; then
+            tunnel_name=$(basename "$config_file" .toml)
+            tunnel_names[$i]=$tunnel_name
+            printf "%d) %s\n" $i "$tunnel_name"
+            ((i++))
+        fi
+    done
+    
+    echo
+    read -p "Select tunnel number: " tunnel_num
+    
+    if [[ ! "$tunnel_num" =~ ^[0-9]+$ ]] || [ "$tunnel_num" -lt 1 ] || [ "$tunnel_num" -ge "$i" ]; then
+        print_color $RED "❌ Invalid selection"
+        read -p "Press Enter to continue..."
+        return
+    fi
+    
+    selected_tunnel=${tunnel_names[$tunnel_num]}
+    config_file="$TUNNELS_DIR/${selected_tunnel}.toml"
+    
+    print_color $GREEN "📄 Configuration for '$selected_tunnel':"
+    echo
+    cat "$config_file"
+    echo
+    
+    read -p "Press Enter to continue..."
+}
+
+# Update Backhaul to latest version
+update_backhaul() {
+    print_header
+    print_color $YELLOW "🔄 Updating Backhaul..."
+    
+    # Check current version
+    current_version=""
+    if [ -f "$BINARY_PATH" ]; then
+        current_version=$($BINARY_PATH --version 2>/dev/null | grep -oE 'v[0-9]+\.[0-9]+\.[0-9]+' | head -1 || echo "unknown")
+    fi
+    
+    detect_system
+    get_latest_version
+    
+    if [ "$current_version" == "$LATEST_VERSION" ]; then
+        print_color $GREEN "✅ Already running latest version: $LATEST_VERSION"
+        read -p "Press Enter to continue..."
+        return
+    fi
+    
+    print_color $YELLOW "📦 Current version: $current_version"
+    print_color $YELLOW "🆕 Latest version: $LATEST_VERSION"
+    
+    read -p "Continue with update? (y/n): " confirm
+    if [[ "$confirm" != "y" && "$confirm" != "Y" ]]; then
+        return
+    fi
+    
+    # Stop all services temporarily
+    print_color $YELLOW "⏸️  Stopping all tunnel services..."
+    for config_file in "$TUNNELS_DIR"/*.toml; do
+        if [ -f "$config_file" ]; then
+            tunnel_name=$(basename "$config_file" .toml)
+            sudo systemctl stop "backhaul-${tunnel_name}.service" 2>/dev/null || true
+        fi
+    done
+    
+    # Download and install new version
+    DOWNLOAD_URL="https://github.com/Musixal/Backhaul/releases/download/${LATEST_VERSION}/backhaul_${OS}_${ARCH}.tar.gz"
+    
+    cd /tmp
+    if ! curl -L -o "backhaul_new.tar.gz" "$DOWNLOAD_URL"; then
+        print_color $RED "❌ Failed to download update"
+        exit 1
+    fi
+    
+    if ! tar -xzf backhaul_new.tar.gz; then
+        print_color $RED "❌ Failed to extract update"
+        exit 1
+    fi
+    
+    # Backup old binary
+    sudo cp "$BINARY_PATH" "${BINARY_PATH}.backup"
+    
+    # Install new binary
+    sudo mv backhaul "$BINARY_PATH"
+    sudo chmod +x "$BINARY_PATH"
+    
+    # Restart all services
+    print_color $YELLOW "🔄 Restarting all tunnel services..."
+    for config_file in "$TUNNELS_DIR"/*.toml; do
+        if [ -f "$config_file" ]; then
+            tunnel_name=$(basename "$config_file" .toml)
+            sudo systemctl start "backhaul-${tunnel_name}.service" 2>/dev/null || true
+        fi
+    done
+    
+    print_color $GREEN "✅ Backhaul updated successfully to $LATEST_VERSION!"
+    
+    read -p "Press Enter to continue..."
+}
+
+# Uninstall Backhaul
+uninstall_backhaul() {
+    print_header
+    print_color $RED "🗑️  Uninstall Backhaul"
+    echo
+    
+    print_color $YELLOW "⚠️  This will remove:"
+    print_color $WHITE "   • All tunnel configurations"
+    print_color $WHITE "   • All tunnel services"
+    print_color $WHITE "   • Backhaul binary"
+    print_color $WHITE "   • Log files"
+    echo
+    
+    read -p "Are you sure you want to uninstall Backhaul? (type 'YES' to confirm): " confirm
+    if [ "$confirm" != "YES" ]; then
+        print_color $GREEN "❌ Uninstall cancelled"
+        read -p "Press Enter to continue..."
+        return
+    fi
+    
+    # Stop and remove all services
+    for config_file in "$TUNNELS_DIR"/*.toml; do
+        if [ -f "$config_file" ]; then
+            tunnel_name=$(basename "$config_file" .toml)
+            sudo systemctl stop "backhaul-${tunnel_name}.service" 2>/dev/null || true
+            sudo systemctl disable "backhaul-${tunnel_name}.service" 2>/dev/null || true
+            sudo rm -f "$SERVICE_DIR/backhaul-${tunnel_name}.service"
+        fi
+    done
+    
+    # Remove directories and files
+    sudo rm -rf "$BACKHAUL_DIR"
+    sudo rm -rf "$CONFIG_DIR"
+    sudo rm -rf "$LOG_DIR"
+    sudo rm -f /usr/local/bin/backhaul
+    
+    sudo systemctl daemon-reload
+    
+    print_color $GREEN "✅ Backhaul uninstalled successfully!"
+    
+    read -p "Press Enter to exit..."
+    exit 0
+}
+
+# System information
+show_system_info() {
+    print_header
+    print_color $CYAN "💻 System Information"
+    echo
+    
+    print_color $WHITE "🔧 System Details:"
+    print_color $GREEN "   OS: $(uname -s)"
+    print_color $GREEN "   Architecture: $(uname -m)"
+    print_color $GREEN "   Kernel: $(uname -r)"
+    print_color $GREEN "   Hostname: $(hostname)"
+    echo
+    
+    if [ -f "$BINARY_PATH" ]; then
+        version=$($BINARY_PATH --version 2>/dev/null | head -1 || echo "Unable to get version")
+        print_color $WHITE "🚀 Backhaul Status:"
+        print_color $GREEN "   Binary: $BINARY_PATH"
