@@ -3,7 +3,7 @@ import sys
 import subprocess
 import json
 import time
-import shutil  # <-- کتابخانه جدید برای بررسی دستورات
+import shutil  # <-- کتابخانه مهم برای حل مشکل
 from urllib import request
 
 # ====================================================================
@@ -65,7 +65,6 @@ def check_requirements():
 
     if missing:
         colorize(f"Missing required packages: {', '.join(missing)}", C.RED, bold=True)
-        # Check for apt package manager to offer auto-install
         if shutil.which("apt-get"):
             answer = input("Do you want to try to install them now? (y/n): ").lower()
             if answer == 'y':
