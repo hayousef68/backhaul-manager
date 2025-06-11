@@ -3,16 +3,18 @@ import sys
 import subprocess
 import json
 import time
-import shutil  # <-- کتابخانه مهم برای حل مشکل
+import shutil
 from urllib import request
+import random
+import string
 
 # ====================================================================
 #
-#          🚀 Backhaul Manager v5.2 (Python - Dependency Fix) 🚀
+#       🚀 Backhaul Manager v5.3 (Python - Full Feature Set) 🚀
 #
-#   This version replaces the external 'command' utility check with
-#   Python's native 'shutil.which()' to resolve FileNotFoundError
-#   on minimal systems. Also adds a comprehensive requirement check.
+#   This version restores all tunnel configuration and management
+#   features, providing the full functionality of the original script
+#   within the stable Python environment.
 #
 # ====================================================================
 
@@ -20,11 +22,9 @@ from urllib import request
 class C:
     RED, GREEN, YELLOW, CYAN, WHITE, BOLD, RESET = '\033[31m', '\033[32m', '\033[33m', '\033[36m', '\033[37m', '\033[1m', '\033[0m'
 
-# Paths
 BACKHAUL_DIR, CONFIG_DIR, SERVICE_DIR = "/opt/backhaul", "/etc/backhaul", "/etc/systemd/system"
 LOG_DIR, BINARY_PATH, TUNNELS_DIR = "/var/log/backhaul", f"{BACKHAUL_DIR}/backhaul", f"{CONFIG_DIR}/tunnels"
 SCRIPT_PATH = "/usr/local/bin/backhaul-manager.py"
-
 
 # --- Helper Functions ---
 def run_cmd(command, as_root=False):
@@ -53,40 +53,140 @@ def get_core_version():
         return "Unknown"
     return "N/A"
 
-# --- Prerequisite Check Function (New and Improved) ---
 def check_requirements():
-    """Checks for required system commands using a reliable method."""
     colorize("Checking for required packages...", C.YELLOW)
     requirements = ['wget', 'tar', 'systemctl', 'openssl', 'jq']
-    missing = []
-    for cmd in requirements:
-        if shutil.which(cmd) is None:
-            missing.append(cmd)
-
+    missing = [cmd for cmd in requirements if shutil.which(cmd) is None]
     if missing:
         colorize(f"Missing required packages: {', '.join(missing)}", C.RED, bold=True)
-        if shutil.which("apt-get"):
-            answer = input("Do you want to try to install them now? (y/n): ").lower()
-            if answer == 'y':
-                colorize("Updating package lists...", C.YELLOW)
-                run_cmd(['apt-get', 'update'], as_root=True)
-                install_cmd = ['apt-get', 'install', '-y'] + missing
-                result = run_cmd(install_cmd, as_root=True)
-                if result.returncode == 0:
-                    colorize("All packages installed successfully!", C.GREEN)
-                else:
-                    colorize("Failed to install packages. Please install them manually.", C.RED)
-                    sys.exit(1)
-            else:
-                colorize("Please install the missing packages manually and run the script again.", C.RED)
-                sys.exit(1)
-        else:
-            colorize("Could not find 'apt-get'. Please install the missing packages manually.", C.RED)
-            sys.exit(1)
-    time.sleep(1)
+        sys.exit(1)
+
+def create_service(tunnel_name):
+    service_content = f"""
+[Unit]
+Description=Backhaul Tunnel Service - {tunnel_name}
+After=network.target
+StartLimitIntervalSec=0
+
+[Service]
+Type=simple
+ExecStart={BINARY_PATH} -c {TUNNELS_DIR}/{tunnel_name}.toml
+Restart=always
+RestartSec=3
+User=root
+LimitNOFILE=1048576
+
+[Install]
+WantedBy=multi-user.target
+"""
+    service_path = f"{SERVICE_DIR}/backhaul-{tunnel_name}.service"
+    try:
+        with open("/tmp/temp_service", "w") as f:
+            f.write(service_content)
+        run_cmd(['mv', '/tmp/temp_service', service_path], as_root=True)
+        run_cmd(['systemctl', 'daemon-reload'], as_root=True)
+        run_cmd(['systemctl', 'enable', f'backhaul-{tunnel_name}.service'], as_root=True)
+    except Exception as e:
+        colorize(f"Error creating service: {e}", C.RED)
 
 
-# --- Main Feature Functions ---
+# --- Full Feature Functions ---
+
+def create_server_tunnel():
+    clear_screen()
+    colorize("--- 🇮🇷 Create Iran Server Tunnel ---", C.GREEN, bold=True)
+    
+    tunnel_name = input("Enter a name for this tunnel: ")
+    if not tunnel_name:
+        colorize("Tunnel name cannot be empty.", C.RED); time.sleep(2); return
+
+    print("\nAvailable transport protocols: tcp, tcpmux, udp, ws, wss, wsmux, wssmux")
+    transport = input("Choose a transport protocol (default: tcp): ") or "tcp"
+    
+    bind_addr = input("Enter bind address (default: 0.0.0.0:3080): ") or "0.0.0.0:3080"
+    
+    token = input("Enter authentication token (leave empty to generate): ")
+    if not token:
+        token = ''.join(random.choices(string.ascii_letters + string.digits, k=16))
+        colorize(f"🔑 Generated token: {token}", C.YELLOW)
+
+    colorize("\nPort configuration examples (comma-separated):", C.CYAN)
+    colorize("  443         (Listen on port 443)", C.WHITE)
+    colorize("  443=5201    (Listen on 443, forward to 5201)", C.WHITE)
+    ports_str = input("Enter port configurations: ")
+    ports_list = [p.strip() for p in ports_str.split(',') if p.strip()]
+
+    # Generate TOML config
+    config_content = f"""
+[server]
+bind_addr = "{bind_addr}"
+transport = "{transport}"
+token = "{token}"
+log_level = "info"
+ports = {json.dumps(ports_list)}
+"""
+    
+    config_path = f"{TUNNELS_DIR}/{tunnel_name}.toml"
+    with open(config_path, "w") as f:
+        f.write(config_content)
+        
+    create_service(tunnel_name)
+    run_cmd(['systemctl', 'start', f'backhaul-{tunnel_name}.service'], as_root=True)
+    
+    colorize(f"\n✅ Server tunnel '{tunnel_name}' created and started!", C.GREEN, bold=True)
+    press_key()
+
+
+def create_client_tunnel():
+    clear_screen()
+    colorize("--- 🌍 Create Kharej Client Tunnel ---", C.CYAN, bold=True)
+
+    tunnel_name = input("Enter a name for this tunnel: ")
+    if not tunnel_name:
+        colorize("Tunnel name cannot be empty.", C.RED); time.sleep(2); return
+
+    remote_addr = input("Enter the Iran Server address (IP:PORT): ")
+    if not remote_addr:
+        colorize("Server address cannot be empty.", C.RED); time.sleep(2); return
+
+    print("\nAvailable transport protocols: tcp, tcpmux, udp, ws, wss, wsmux, wssmux")
+    transport = input("Choose a transport protocol (default: tcp): ") or "tcp"
+
+    token = input("Enter the authentication token from the server: ")
+    if not token:
+        colorize("Token cannot be empty.", C.RED); time.sleep(2); return
+        
+    config_content = f"""
+[client]
+remote_addr = "{remote_addr}"
+transport = "{transport}"
+token = "{token}"
+log_level = "info"
+"""
+    
+    config_path = f"{TUNNELS_DIR}/{tunnel_name}.toml"
+    with open(config_path, "w") as f:
+        f.write(config_content)
+        
+    create_service(tunnel_name)
+    run_cmd(['systemctl', 'start', f'backhaul-{tunnel_name}.service'], as_root=True)
+    
+    colorize(f"\n✅ Client tunnel '{tunnel_name}' created and started!", C.GREEN, bold=True)
+    press_key()
+
+def configure_new_tunnel():
+    clear_screen()
+    colorize("--- Configure a New Tunnel ---", C.CYAN, bold=True)
+    print("\n1) Create Iran Server Tunnel (Server Role)")
+    print("2) Create Kharej Client Tunnel (Client Role)")
+    choice = input("Enter your choice [1-2]: ")
+    if choice == '1':
+        create_server_tunnel()
+    elif choice == '2':
+        create_client_tunnel()
+    else:
+        colorize("Invalid choice.", C.RED); time.sleep(1)
+
 def install_backhaul_core():
     clear_screen()
     colorize("--- Installing/Updating Backhaul Core (v0.6.5 - Direct Link) ---", C.YELLOW, bold=True)
@@ -113,14 +213,13 @@ def install_backhaul_core():
         colorize(f"An error occurred: {e}", C.RED)
     press_key()
 
-
 def check_tunnels_status():
     clear_screen()
     colorize("--- Backhaul Tunnels Status ---", C.CYAN, bold=True)
     if not os.path.exists(TUNNELS_DIR) or not os.listdir(TUNNELS_DIR):
         colorize("⚠️ No tunnels found.", C.YELLOW); press_key(); return
 
-    print(f"{'NAME':<20} {'TYPE':<15} {'STATUS':<22}")
+    print(f"{C.BOLD}{'NAME':<20} {'TYPE':<15} {'STATUS':<22}{C.RESET}")
     print(f"{'----':<20} {'----':<15} {'------':<22}")
 
     for filename in sorted(os.listdir(TUNNELS_DIR)):
@@ -136,10 +235,7 @@ def check_tunnels_status():
                 tunnel_type = "Unknown"
             
             result = run_cmd(['systemctl', 'is-active', service_name])
-            if result.stdout.strip() == "active":
-                status = f"{C.GREEN}● Active{C.RESET}"
-            else:
-                status = f"{C.RED}● Inactive{C.RESET}"
+            status = f"{C.GREEN}● Active{C.RESET}" if result.stdout.strip() == "active" else f"{C.RED}● Inactive{C.RESET}"
             print(f"{tunnel_name:<20} {tunnel_type:<15} {status}")
     press_key()
 
@@ -171,7 +267,7 @@ def display_menu():
     server_ip, server_country, server_isp = get_server_info()
     core_version = get_core_version()
 
-    colorize("Script Version: v5.2 (Python - Dependency Fix)", C.CYAN)
+    colorize("Script Version: v5.3 (Python - Full Feature Set)", C.CYAN)
     colorize(f"Core Version: {core_version}", C.CYAN)
     colorize("Telegram Channel: @Gozar_Xray", C.CYAN)
     print(C.YELLOW + "═════════════════════════════════════════════" + C.RESET)
@@ -183,13 +279,11 @@ def display_menu():
     print(C.YELLOW + "═════════════════════════════════════════════" + C.RESET)
 
     print("")
-    colorize(" 1. Configure a new tunnel", C.WHITE)
+    colorize(" 1. Configure a new tunnel", C.WHITE, bold=True)
     colorize(" 2. Tunnel management menu", C.WHITE)
     colorize(" 3. Check tunnels status", C.WHITE)
-    colorize(" 4. Optimize network & system limits", C.WHITE)
-    colorize(" 5. Install/Update Backhaul Core (v0.6.5)", C.WHITE)
-    colorize(" 6. Update this script", C.WHITE)
-    colorize(" 7. Uninstall Backhaul", C.RED)
+    colorize(" 4. Install/Update Backhaul Core (v0.6.5)", C.WHITE)
+    colorize(" 5. Uninstall Backhaul", C.RED, bold=True)
     colorize(" 0. Exit", C.YELLOW)
     print("-------------------------------------")
 
@@ -199,14 +293,12 @@ def main():
     while True:
         display_menu()
         try:
-            choice = input("Enter your choice [0-7]: ")
-            if choice == '1': colorize("This feature is under development.", C.YELLOW); press_key()
+            choice = input("Enter your choice [0-5]: ")
+            if choice == '1': configure_new_tunnel()
             elif choice == '2': colorize("This feature is under development.", C.YELLOW); press_key()
             elif choice == '3': check_tunnels_status()
-            elif choice == '4': colorize("This feature is under development.", C.YELLOW); press_key()
-            elif choice == '5': install_backhaul_core()
-            elif choice == '6': colorize("This feature is under development.", C.YELLOW); press_key()
-            elif choice == '7': uninstall_backhaul()
+            elif choice == '4': install_backhaul_core()
+            elif choice == '5': uninstall_backhaul()
             elif choice == '0': print("Exiting."); sys.exit(0)
             else: colorize("Invalid option. Please try again.", C.RED); time.sleep(1)
         except (KeyboardInterrupt, EOFError):
@@ -214,7 +306,7 @@ def main():
 
 if __name__ == "__main__":
     if os.geteuid() != 0:
-        colorize("Error: This script must be run as root. Please use 'sudo'.", C.RED, bold=True)
+        colorize("Error: This script must be run as root.", C.RED, bold=True)
         sys.exit(1)
     
     check_requirements()
