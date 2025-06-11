@@ -11,10 +11,10 @@ import string
 
 # ====================================================================
 #
-#    🚀 Backhaul Manager v7.1 (Python - Feature Complete) 🚀
+#    🚀 Backhaul Manager v7.2 (Python - Final Version) 🚀
 #
-#   This version adds "Add Port to Existing Tunnel" and a
-#   "Self-Update" mechanism to complete the feature set.
+#   This version fixes the critical NameError bug and includes all
+#   previously requested features for a complete management solution.
 #
 # ====================================================================
 
@@ -26,7 +26,6 @@ BACKHAUL_DIR, CONFIG_DIR, SERVICE_DIR = "/opt/backhaul", "/etc/backhaul", "/etc/
 LOG_DIR, BINARY_PATH, TUNNELS_DIR = "/var/log/backhaul", f"{BACKHAUL_DIR}/backhaul", f"{CONFIG_DIR}/tunnels"
 SCRIPT_SELF_PATH = os.path.realpath(sys.argv[0])
 SCRIPT_GIT_URL = "https://raw.githubusercontent.com/hayousef68/backhaul-manager/main/install.sh"
-
 
 # --- Helper Functions ---
 def run_cmd(command, as_root=False, capture=True):
@@ -151,6 +150,15 @@ def create_client_tunnel():
     create_service(tunnel_name); run_cmd(['systemctl', 'start', f'backhaul-{tunnel_name}.service'], as_root=True)
     colorize(f"\n✅ Client tunnel '{tunnel_name}' created!", C.GREEN, bold=True); press_key()
 
+# --- BUG FIX: Restoring the configure_new_tunnel function ---
+def configure_new_tunnel():
+    clear_screen(); colorize("--- Configure a New Tunnel ---", C.CYAN, bold=True)
+    print("\n1) Create Iran Server Tunnel\n2) Create Kharej Client Tunnel")
+    choice = input("Enter your choice [1-2]: ")
+    if choice == '1': create_server_tunnel()
+    elif choice == '2': create_client_tunnel()
+    else: colorize("Invalid choice.", C.RED); time.sleep(1)
+
 def add_ports_to_tunnel(tunnel_name):
     clear_screen(); colorize(f"--- Adding Ports to '{tunnel_name}' ---", C.YELLOW, bold=True)
     config_path = os.path.join(TUNNELS_DIR, f"{tunnel_name}.toml")
@@ -247,20 +255,17 @@ def update_script():
     try:
         temp_path = "/tmp/backhaul_manager.py.tmp"
         run_cmd(['curl', '-sSL', SCRIPT_GIT_URL, '-o', temp_path])
-        if os.path.getsize(temp_path) > 100: # Basic check to ensure file is not empty
+        if os.path.exists(temp_path) and os.path.getsize(temp_path) > 100:
             run_cmd(['mv', temp_path, SCRIPT_SELF_PATH], as_root=True)
             run_cmd(['chmod', '+x', SCRIPT_SELF_PATH], as_root=True)
             colorize("✅ Script updated successfully!", C.GREEN)
             colorize("Please exit and run the script again to use the new version.", C.YELLOW)
             sys.exit(0)
-        else:
-            colorize("❌ Failed to download a valid update.", C.RED)
-    except Exception as e:
-        colorize(f"An error occurred: {e}", C.RED)
+        else: colorize("❌ Failed to download a valid update.", C.RED)
+    except Exception as e: colorize(f"An error occurred: {e}", C.RED)
     press_key()
 
 def install_backhaul_core():
-    # Unchanged
     clear_screen(); colorize("--- Installing Backhaul Core (v0.6.5) ---", C.YELLOW, bold=True)
     try:
         arch = os.uname().machine
@@ -273,8 +278,8 @@ def install_backhaul_core():
         colorize("✅ Backhaul Core v0.6.5 installed successfully!", C.GREEN, bold=True)
     except Exception as e: colorize(f"An error occurred: {e}", C.RED)
     press_key()
+
 def check_tunnels_status():
-    # Unchanged
     clear_screen(); colorize("--- Backhaul Tunnels Status ---", C.CYAN, bold=True)
     try:
         tunnels_info = []
@@ -293,8 +298,8 @@ def check_tunnels_status():
     print(f"{C.BOLD}{'NAME':<20} {'TYPE':<10} {'ADDRESS/PORT':<22} {'STATUS'}{C.RESET}\n{'----':<20} {'----':<10} {'------------':<22} {'------'}")
     for info in tunnels_info: print(f"{info['name']:<20} {info['type']:<10} {info['addr']:<22} {info['status']}")
     press_key()
+
 def uninstall_backhaul():
-    # Unchanged
     clear_screen(); colorize("--- Uninstall Backhaul ---", C.RED, bold=True)
     confirm = input("Are you sure? (y/n): ").lower()
     if confirm != "y": colorize("Uninstall cancelled.", C.GREEN); press_key(); return
@@ -307,8 +312,8 @@ def uninstall_backhaul():
     if os.path.exists(SCRIPT_SELF_PATH): run_cmd(['rm', '-f', SCRIPT_SELF_PATH], as_root=True)
     run_cmd(['systemctl', 'daemon-reload'], as_root=True)
     colorize("✅ Backhaul uninstalled completely.", C.GREEN); sys.exit(0)
+
 def run_system_optimizer():
-    # Unchanged
     clear_screen(); colorize("--- Run Hawshemi's Linux Optimizer ---", C.CYAN, bold=True)
     colorize("This will download and execute the latest version of the script from GitHub.", C.YELLOW)
     confirm = input("Are you sure you want to continue? (y/n): ").lower()
@@ -321,10 +326,9 @@ def run_system_optimizer():
     except Exception as e: colorize(f"An error occurred: {e}", C.RED)
     press_key()
 
-# --- Menu Display and Main Loop ---
 def display_menu():
     clear_screen(); server_ip, server_country, server_isp = get_server_info(); core_version = get_core_version()
-    colorize("Script Version: v7.1 (Python - Feature Complete)", C.CYAN)
+    colorize("Script Version: v7.2 (Python - Final)", C.CYAN)
     colorize(f"Core Version: {core_version}", C.CYAN)
     print(C.YELLOW + "═════════════════════════════════════════════" + C.RESET)
     colorize(f"IP Address: {server_ip}", C.WHITE); colorize(f"Location: {server_country}", C.WHITE); colorize(f"Datacenter: {server_isp}", C.WHITE)
@@ -333,7 +337,7 @@ def display_menu():
     print(C.YELLOW + "═════════════════════════════════════════════" + C.RESET)
     print(""); colorize(" 1. Configure a new tunnel", C.WHITE, bold=True); colorize(" 2. Tunnel management menu", C.WHITE, bold=True);
     colorize(" 3. Check tunnels status", C.WHITE); colorize(" 4. Install/Update Backhaul Core", C.WHITE);
-    colorize(" 5. Run System Optimizer (Hawshemi)", C.WHITE)
+    colorize(" 5. Run System Optimizer", C.WHITE)
     colorize(" 6. Update This Script", C.CYAN)
     colorize(" 7. Uninstall Backhaul", C.RED, bold=True); colorize(" 0. Exit", C.YELLOW); print("-------------------------------------")
 
@@ -356,7 +360,6 @@ def main():
 
 if __name__ == "__main__":
     if os.geteuid() != 0: colorize("Error: This script must be run as root.", C.RED, bold=True); sys.exit(1)
-    # Install self to a common path for easy access
     if os.path.realpath(sys.argv[0]) != "/usr/local/bin/backhaul-manager":
         try:
             run_cmd(['cp', sys.argv[0], '/usr/local/bin/backhaul-manager'], as_root=True)
