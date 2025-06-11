@@ -26,5 +26,5 @@
 برای دانلود و اجرای اسکریپت، دستور زیر را در ترمینال سرور خود اجرا کنید:
 
 ```bash
-curl -sSL -o backhaul_manager.py [https://raw.githubusercontent.com/hayousef68/backhaul-manager/main/install.sh](https://raw.githubusercontent.com/hayousef68/backhaul-manager/main/install.sh) && sudo python3 backhaul_manager.py
+curl -sSL -o backhaul_manager.py https://raw.githubusercontent.com/hayousef68/backhaul-manager/main/install.sh && sudo python3 backhaul_manager.py
 ```
