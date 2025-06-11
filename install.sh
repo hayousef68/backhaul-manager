@@ -751,3 +751,205 @@ show_system_info() {
         version=$($BINARY_PATH --version 2>/dev/null | head -1 || echo "Unable to get version")
         print_color $WHITE "🚀 Backhaul Status:"
         print_color $GREEN "   Binary: $BINARY_PATH"
+        print_color $GREEN "   Version: $version"
+        print_color $GREEN "   Status: Installed"
+    else
+        print_color $RED "   Status: Not Installed"
+    fi
+    echo
+    
+    print_color $WHITE "📊 Active Tunnels:"
+    tunnel_count=0
+    if [ -d "$TUNNELS_DIR" ]; then
+        for config_file in "$TUNNELS_DIR"/*.toml; do
+            if [ -f "$config_file" ]; then
+                tunnel_name=$(basename "$config_file" .toml)
+                if systemctl is-active --quiet "backhaul-${tunnel_name}.service"; then
+                    print_color $GREEN "   ✅ $tunnel_name (Active)"
+                else
+                    print_color $RED "   ❌ $tunnel_name (Inactive)"
+                fi
+                ((tunnel_count++))
+            fi
+        done
+    fi
+    
+    if [ $tunnel_count -eq 0 ]; then
+        print_color $YELLOW "   No tunnels configured"
+    fi
+    
+    echo
+    print_color $WHITE "💾 Disk Usage:"
+    df -h / | tail -1 | awk '{print "   Free Space: " $4 " / " $2}'
+    
+    echo
+    print_color $WHITE "🌐 Network:"
+    ip -4 addr show | grep -oP '(?<=inet\s)\d+(\.\d+){3}' | grep -v 127.0.0.1 | head -3 | while read ip; do
+        print_color $GREEN "   IP: $ip"
+    done
+    
+    read -p "Press Enter to continue..."
+}
+
+# Main menu
+show_main_menu() {
+    while true; do
+        print_header
+        print_color $WHITE "Please select an option:"
+        echo
+        print_color $GREEN "📦 Installation & Updates:"
+        print_color $WHITE "   1) Install Backhaul"
+        print_color $WHITE "   2) Update Backhaul"
+        print_color $WHITE "   3) Generate TLS Certificate"
+        echo
+        print_color $BLUE "🔧 Tunnel Management:"
+        print_color $WHITE "   4) Create Iran Server Tunnel"
+        print_color $WHITE "   5) Create Kharej Client Tunnel"
+        print_color $WHITE "   6) List All Tunnels"
+        print_color $WHITE "   7) Manage Tunnel (Start/Stop/Restart)"
+        print_color $WHITE "   8) View Tunnel Configuration"
+        echo
+        print_color $CYAN "ℹ️  Information & Utilities:"
+        print_color $WHITE "   9) System Information"
+        print_color $WHITE "   10) View Logs"
+        echo
+        print_color $RED "🗑️  Maintenance:"
+        print_color $WHITE "   11) Uninstall Backhaul"
+        echo
+        print_color $YELLOW "   0) Exit"
+        echo
+        
+        read -p "Enter your choice [0-11]: " choice
+        
+        case $choice in
+            1) install_backhaul ;;
+            2) update_backhaul ;;
+            3) generate_tls_cert ;;
+            4) create_server_tunnel ;;
+            5) create_client_tunnel ;;
+            6) list_tunnels ;;
+            7) manage_tunnel ;;
+            8) view_config ;;
+            9) show_system_info ;;
+            10) view_logs ;;
+            11) uninstall_backhaul ;;
+            0) 
+                print_color $GREEN "👋 Thank you for using Backhaul Manager!"
+                exit 0
+                ;;
+            *)
+                print_color $RED "❌ Invalid option. Please try again."
+                sleep 2
+                ;;
+        esac
+    done
+}
+
+# View logs function
+view_logs() {
+    print_header
+    print_color $CYAN "📋 View Tunnel Logs"
+    echo
+    
+    if [ ! -d "$TUNNELS_DIR" ] || [ -z "$(ls -A $TUNNELS_DIR 2>/dev/null)" ]; then
+        print_color $YELLOW "⚠️  No tunnels found"
+        read -p "Press Enter to continue..."
+        return
+    fi
+    
+    print_color $CYAN "Available tunnels:"
+    i=1
+    declare -a tunnel_names
+    for config_file in "$TUNNELS_DIR"/*.toml; do
+        if [ -f "$config_file" ]; then
+            tunnel_name=$(basename "$config_file" .toml)
+            tunnel_names[$i]=$tunnel_name
+            printf "%d) %s\n" $i "$tunnel_name"
+            ((i++))
+        fi
+    done
+    
+    echo
+    read -p "Select tunnel number: " tunnel_num
+    
+    if [[ ! "$tunnel_num" =~ ^[0-9]+$ ]] || [ "$tunnel_num" -lt 1 ] || [ "$tunnel_num" -ge "$i" ]; then
+        print_color $RED "❌ Invalid selection"
+        read -p "Press Enter to continue..."
+        return
+    fi
+    
+    selected_tunnel=${tunnel_names[$tunnel_num]}
+    
+    print_color $GREEN "📋 Logs for '$selected_tunnel' (Press Ctrl+C to exit):"
+    journalctl -u "backhaul-${selected_tunnel}.service" -f
+}
+
+# Check if running as root
+check_root() {
+    if [ "$EUID" -ne 0 ]; then
+        print_color $RED "❌ This script must be run as root"
+        print_color $YELLOW "Please run: sudo $0"
+        exit 1
+    fi
+}
+
+# Check system requirements
+check_requirements() {
+    # Check for required commands
+    local missing_commands=()
+    
+    for cmd in curl tar systemctl openssl; do
+        if ! command -v $cmd &> /dev/null; then
+            missing_commands+=($cmd)
+        fi
+    done
+    
+    if [ ${#missing_commands[@]} -ne 0 ]; then
+        print_color $RED "❌ Missing required commands: ${missing_commands[*]}"
+        print_color $YELLOW "Installing missing packages..."
+        
+        # Detect package manager and install
+        if command -v apt-get &> /dev/null; then
+            apt-get update
+            apt-get install -y curl tar systemd openssl
+        elif command -v yum &> /dev/null; then
+            yum install -y curl tar systemd openssl
+        elif command -v dnf &> /dev/null; then
+            dnf install -y curl tar systemd openssl
+        else
+            print_color $RED "❌ Unable to install required packages automatically"
+            print_color $YELLOW "Please install manually: ${missing_commands[*]}"
+            exit 1
+        fi
+    fi
+}
+
+# Initialize script
+init_script() {
+    check_root
+    check_requirements
+    create_directories
+}
+
+# Main execution
+main() {
+    init_script
+    
+    # Show welcome message on first run
+    if [ ! -f "$BINARY_PATH" ]; then
+        print_header
+        print_color $YELLOW "🎉 Welcome to Backhaul Manager!"
+        print_color $WHITE "This appears to be your first time running the manager."
+        print_color $WHITE "Would you like to install Backhaul now?"
+        echo
+        read -p "Install Backhaul? (y/n): " install_now
+        if [[ "$install_now" == "y" || "$install_now" == "Y" ]]; then
+            install_backhaul
+        fi
+    fi
+    
+    show_main_menu
+}
+
+# Run main function
+main "$@"
