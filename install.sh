@@ -2,11 +2,10 @@
 
 # ====================================================================
 #
-#          🚀 Backhaul Manager v3.0 🚀
+#          🚀 Backhaul Manager v3.1 (Stable Menu) 🚀
 #
-#   A complete, advanced management script for the Backhaul tunnel.
-#   Rebuilt based on user-provided samples for enhanced functionality
-#   and a professional, flicker-free user interface.
+#   This version implements a more robust menu loop to prevent
+#   flickering and input issues on various terminal emulators.
 #
 # ====================================================================
 
@@ -41,13 +40,13 @@ press_key() { read -p "Press Enter to continue..."; }
 
 # Check for required commands
 check_requirements() {
+    # This function remains unchanged
     local missing_commands=()
     for cmd in curl tar systemctl openssl jq; do
         if ! command -v $cmd &> /dev/null; then
             missing_commands+=($cmd)
         fi
     done
-    
     if [ ${#missing_commands[@]} -ne 0 ]; then
         print_color $RED "❌ Missing required commands: ${missing_commands[*]}"
         print_color $YELLOW "Attempting to install..."
@@ -66,6 +65,7 @@ check_requirements() {
 
 # Get server information
 get_server_info() {
+    # This function remains unchanged
     IP_INFO=$(curl -s 'http://ip-api.com/json/?fields=query,country,isp')
     SERVER_IP=$(echo "$IP_INFO" | jq -r '.query')
     SERVER_COUNTRY=$(echo "$IP_INFO" | jq -r '.country')
@@ -74,12 +74,14 @@ get_server_info() {
 
 # Create necessary directories
 create_directories() {
+    # This function remains unchanged
     sudo mkdir -p "$BACKHAUL_DIR" "$CONFIG_DIR" "$LOG_DIR" "$TUNNELS_DIR" "$CONFIG_DIR/certs"
     sudo chmod -R 755 "$BACKHAUL_DIR" "$CONFIG_DIR" "$LOG_DIR" "$TUNNELS_DIR"
 }
 
 # Check if a port is in use
 is_port_in_use() {
+    # This function remains unchanged
     local port=$1
     if sudo ss -tln | grep -q ":$port\s"; then
         return 0 # In use
@@ -90,6 +92,7 @@ is_port_in_use() {
 
 # Generate configuration file (Advanced)
 generate_config_advanced() {
+    # This function remains unchanged
     local params=$1
     local tunnel_name=$(echo "$params" | jq -r '.tunnel_name')
     local config_file="$TUNNELS_DIR/${tunnel_name}.toml"
@@ -155,6 +158,7 @@ EOF
 
 # Create systemd service
 create_service() {
+    # This function remains unchanged
     local tunnel_name=$1
     local service_file="$SERVICE_DIR/backhaul-${tunnel_name}.service"
     
@@ -177,7 +181,8 @@ EOF
     sudo systemctl enable "backhaul-${tunnel_name}.service"
 }
 
-# --- Menu Functions ---
+
+# --- Feature Functions ---
 
 # 1. Configure a new tunnel
 configure_new_tunnel() {
@@ -235,7 +240,7 @@ configure_iran_server() {
             params=$(echo "$params" | jq --arg wp "$web_port" '. + {web_port: $wp}')
             break
         else
-            print_color $RED "Port $web_port is already in use. Please choose a different port." 
+            print_color $RED "Port $web_port is already in use. Please choose a different port."
         fi
     done
 
@@ -243,9 +248,9 @@ configure_iran_server() {
     params=$(echo "$params" | jq --arg pp "${proxy_protocol:-false}" '. + {proxy_protocol: $pp}')
     
     print_color $CYAN "[*] Supported Port Formats:"
-    echo "1. 443-600              - Listen on all ports in the range 443 to 600" 
-    echo "2. 443-600:5201          - Listen on all ports in the range 443 to 600 and forward traffic to 5201" 
-    echo "3. 443=600=1.1.1.1:5201 - Listen on local port 443 and forward to a specific remote IP" 
+    echo "1. 443-600              - Listen on all ports in the range 443 to 600"
+    echo "2. 443-600:5201          - Listen on all ports in the range 443 to 600 and forward traffic to 5201"
+    echo "3. 443=600=1.1.1.1:5201 - Listen on local port 443 and forward to a specific remote IP"
     
     read -p "[*] Enter your ports in the specified formats (separated by commas): " ports_raw
     ports_array_raw="["$(echo "$ports_raw" | sed 's/,/","/g' | sed 's/^/"/' | sed 's/$/"/')"]"
@@ -288,6 +293,7 @@ configure_kharej_server() {
 
 # 2. Tunnel management menu
 manage_tunnel() {
+    # This function remains unchanged
     clear
     print_color $CYAN "--- Tunnel Management ---"
     if [ -z "$(ls -A $TUNNELS_DIR/*.toml 2>/dev/null)" ]; then
@@ -335,6 +341,7 @@ manage_tunnel() {
 
 # 3. Check tunnels status
 check_tunnels_status() {
+    # This function remains unchanged
     clear
     print_color $CYAN "--- Tunnels Status ---"
     if [ -z "$(ls -A $TUNNELS_DIR/*.toml 2>/dev/null)" ]; then
@@ -359,6 +366,7 @@ check_tunnels_status() {
 
 # 4. Optimize network & system limits
 optimize_server() {
+    # This function remains unchanged
     clear
     print_color $CYAN "--- Optimizing System ---"
     print_color $YELLOW "This will apply common system optimizations for better network performance."
@@ -394,17 +402,23 @@ EOF
 install_backhaul_core() {
     clear
     print_color $YELLOW "--- Installing/Updating Backhaul Core ---"
-    detect_system
     
+    print_color $YELLOW "Detecting system..."
+    ARCH=$(uname -m)
+    case $ARCH in
+        x86_64|amd64) ARCH="amd64" ;; aarch64|arm64) ARCH="arm64" ;; *)
+            print_color $RED "❌ Unsupported architecture: $ARCH"; press_key; return ;;
+    esac
+    OS=$(uname -s | tr '[:upper:]' '[:lower:]')
+
     print_color $YELLOW "Fetching latest version from GitHub..."
     LATEST_VERSION=$(curl -s https://api.github.com/repos/Musixal/Backhaul/releases/latest | grep '"tag_name":' | sed -E 's/.*"([^"]+)".*/\1/')
     if [ -z "$LATEST_VERSION" ]; then
-        print_color $RED "❌ Failed to get latest version."
-        press_key; return
+        print_color $RED "❌ Failed to get latest version."; press_key; return
     fi
     print_color $GREEN "Latest version: $LATEST_VERSION"
 
-    DOWNLOAD_URL="https://github.com/Musixal/Backhaul/releases/download/${LATEST_VERSION}/backhaul_$(uname -s | tr '[:upper:]' '[:lower:]')_$(uname -m | sed 's/x86_64/amd64/').tar.gz"
+    DOWNLOAD_URL="https://github.com/Musixal/Backhaul/releases/download/${LATEST_VERSION}/backhaul_${OS}_${ARCH}.tar.gz"
     
     print_color $YELLOW "Downloading from: $DOWNLOAD_URL"
     cd /tmp
@@ -421,10 +435,13 @@ install_backhaul_core() {
 update_script() {
     print_color $YELLOW "--- Updating Manager Script ---"
     if curl -sSL "$SCRIPT_URL" -o "$SCRIPT_PATH.tmp"; then
-        sudo mv "$SCRIPT_PATH.tmp" "$SCRIPT_PATH"
+        # The move might fail if the script is currently running from SCRIPT_PATH
+        # So we copy, make executable, and then ask the user to re-run
+        sudo cp "$SCRIPT_PATH.tmp" "$SCRIPT_PATH"
         sudo chmod +x "$SCRIPT_PATH"
+        rm "$SCRIPT_PATH.tmp"
         print_color $GREEN "✅ Script updated successfully."
-        print_color $YELLOW "Please exit and run 'backhaul-manager' again."
+        print_color $YELLOW "Please exit and run 'sudo backhaul-manager' again."
     else
         print_color $RED "❌ Failed to download update."
     fi
@@ -433,6 +450,7 @@ update_script() {
 
 # 7. Remove Backhaul Core
 uninstall_backhaul() {
+    # This function remains unchanged
     clear
     print_color $RED "--- Uninstall Backhaul ---"
     print_color $YELLOW "This will stop all tunnels and remove all configs and binaries."
@@ -454,12 +472,14 @@ uninstall_backhaul() {
 }
 
 
-# --- Main Menu and Loop ---
+# --- Menu Display and Input Handling (New Stable Structure) ---
+
+# This function ONLY displays the menu
 display_menu() {
     clear
     get_server_info
     
-    print_color $CYAN "Script Version: v3.0"
+    print_color $CYAN "Script Version: v3.1 (Stable Menu)"
     if [ -f "$BINARY_PATH" ]; then
         CORE_VERSION=$($BINARY_PATH --version | head -n 1)
         print_color $CYAN "Core Version: $CORE_VERSION"
@@ -468,49 +488,53 @@ display_menu() {
         print_color $CYAN "Core Version: N/A"
         CORE_STATUS="${RED}Not Installed${NC}"
     fi
-    print_color $CYAN "Telegram Channel: @Gozar_Xray" 
+    print_color $CYAN "Telegram Channel: @Gozar_Xray"
     echo "-------------------------------------"
     print_color $WHITE "IP Address: $SERVER_IP"
     print_color $WHITE "Location: $SERVER_COUNTRY"
     print_color $WHITE "Datacenter: $SERVER_ISP"
-    print_color $WHITE "Backhaul Core: $CORE_STATUS" 
+    print_color $WHITE "Backhaul Core: $CORE_STATUS"
     echo "-------------------------------------"
 
-    print_color $WHITE "1. Configure a new tunnel [IPv4/IPv6]" 
-    print_color $WHITE "2. Tunnel management menu" 
-    print_color $WHITE "3. Check tunnels status" 
-    print_color $WHITE "4. Optimize network & system limits" 
-    print_color $WHITE "5. Update & Install Backhaul Core" 
-    print_color $WHITE "6. Update & install script" 
-    print_color $RED   "7. Remove Backhaul Core" 
-    print_color $YELLOW "0. Exit" 
+    print_color $WHITE "1. Configure a new tunnel [IPv4/IPv6]"
+    print_color $WHITE "2. Tunnel management menu"
+    print_color $WHITE "3. Check tunnels status"
+    print_color $WHITE "4. Optimize network & system limits"
+    print_color $WHITE "5. Update & Install Backhaul Core"
+    print_color $WHITE "6. Update & install script"
+    print_color $RED   "7. Remove Backhaul Core"
+    print_color $YELLOW "0. Exit"
     echo "-------------------------------------"
 }
 
-main() {
-    check_requirements
-    create_directories
-    # Install self to /usr/local/bin for easy access
-    if [ ! -f "$SCRIPT_PATH" ]; then
-        sudo cp "$0" "$SCRIPT_PATH"
-        sudo chmod +x "$SCRIPT_PATH"
-    fi
-
-    while true; do
-        display_menu
-        read -p "Enter your choice [0-7]: " choice
-        case $choice in
-            1) configure_new_tunnel ;;
-            2) manage_tunnel ;;
-            3) check_tunnels_status ;;
-            4) optimize_server ;;
-            5) install_backhaul_core ;;
-            6) update_script ;;
-            7) uninstall_backhaul ;;
-            0) exit 0 ;;
-            *) print_color $RED "Invalid option. Please try again."; sleep 1 ;;
-        esac
-    done
+# This function ONLY reads the user's choice and calls other functions
+read_option() {
+    read -p "Enter your choice [0-7]: " choice
+    case $choice in
+        1) configure_new_tunnel ;;
+        2) manage_tunnel ;;
+        3) check_tunnels_status ;;
+        4) optimize_server ;;
+        5) install_backhaul_core ;;
+        6) update_script ;;
+        7) uninstall_backhaul ;;
+        0) exit 0 ;;
+        *) print_color $RED "Invalid option. Please try again."; sleep 1 ;;
+    esac
 }
 
-main
+
+# --- Main Execution ---
+check_requirements
+create_directories
+# Install self to /usr/local/bin for easy access on first run
+if [ ! -f "$SCRIPT_PATH" ]; then
+    sudo cp "$0" "$SCRIPT_PATH"
+    sudo chmod +x "$SCRIPT_PATH"
+fi
+
+# The new, stable main loop
+while true; do
+    display_menu
+    read_option
+done
