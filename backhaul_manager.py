@@ -11,10 +11,9 @@ import string
 
 # ====================================================================
 #
-#    🚀 Backhaul Manager v7.0 (Python - Client Mode Fixed) 🚀
+#    🚀 Backhaul Manager v7.1 (Python - Final with Status Display) 🚀
 #
-#   This version adds the missing 'create_client_tunnel'
-#   functionality based on the official GitHub repository.
+#   This version adds status verification after tunnel creation.
 #
 # ====================================================================
 
@@ -112,9 +111,24 @@ def create_server_tunnel():
     with open(f"/tmp/{tunnel_name}.toml", "w") as f: f.write(config_content)
     run_cmd(['mv', f'/tmp/{tunnel_name}.toml', f"{TUNNELS_DIR}/{tunnel_name}.toml"], as_root=True)
     create_service(tunnel_name); run_cmd(['systemctl', 'start', f'backhaul-{tunnel_name}.service'], as_root=True)
-    colorize(f"\n✅ Server tunnel '{tunnel_name}' created!", C.GREEN, bold=True); press_key()
+    
+    # This block was added to verify and display the status of the new tunnel.
+    colorize(f"\n✅ Tunnel '{tunnel_name}' created. Verifying status...", C.GREEN, bold=True)
+    time.sleep(2) # Wait a moment for systemd to update the service status
+    
+    service_name = f'backhaul-{tunnel_name}.service'
+    result = run_cmd(['systemctl', 'is-active', service_name])
+    status_text = ""
+    if result.stdout.strip() == "active":
+        status_text = f"{C.GREEN}● Active{C.RESET}"
+    else:
+        status_text = f"{C.RED}● Inactive{C.RESET}"
+    
+    colorize(f"   Listening Port: {listen_port}", C.WHITE)
+    print(f"   Status: {status_text}")
+    
+    press_key()
 
-# --- NEW FUNCTION ---
 def create_client_tunnel():
     clear_screen(); colorize("--- 🌍 Create Kharej Client Tunnel ---", C.GREEN, bold=True)
     tunnel_name = get_valid_tunnel_name()
@@ -155,8 +169,24 @@ def create_client_tunnel():
     run_cmd(['mv', f'/tmp/{tunnel_name}.toml', f"{TUNNELS_DIR}/{tunnel_name}.toml"], as_root=True)
     create_service(tunnel_name)
     run_cmd(['systemctl', 'start', f'backhaul-{tunnel_name}.service'], as_root=True)
-    colorize(f"\n✅ Client tunnel '{tunnel_name}' created!", C.GREEN, bold=True); press_key()
-# --- END NEW FUNCTION ---
+    
+    # This block was added to verify and display the status of the new tunnel.
+    colorize(f"\n✅ Tunnel '{tunnel_name}' created. Verifying status...", C.GREEN, bold=True)
+    time.sleep(2) # Wait a moment for systemd to update the service status
+
+    service_name = f'backhaul-{tunnel_name}.service'
+    remote_port = remote_addr.split(':')[-1]
+    result = run_cmd(['systemctl', 'is-active', service_name])
+    status_text = ""
+    if result.stdout.strip() == "active":
+        status_text = f"{C.GREEN}● Active{C.RESET}"
+    else:
+        status_text = f"{C.RED}● Inactive{C.RESET}"
+
+    colorize(f"   Connecting to Port: {remote_port}", C.WHITE)
+    print(f"   Status: {status_text}")
+
+    press_key()
 
 def manage_tunnel():
     clear_screen(); colorize("--- 🔧 Tunnel Management Menu ---", C.YELLOW, bold=True)
@@ -225,9 +255,7 @@ def configure_new_tunnel():
     print("\n1) Create Iran Server Tunnel\n2) Create Kharej Client Tunnel")
     choice = input("Enter your choice [1-2]: ")
     if choice == '1': create_server_tunnel()
-    # --- FIXED ---
     elif choice == '2': create_client_tunnel() 
-    # --- END FIX ---
     else: colorize("Invalid choice.", C.RED); time.sleep(1)
 
 def install_backhaul_core():
@@ -283,7 +311,7 @@ def uninstall_backhaul():
 # --- Menu Display and Main Loop ---
 def display_menu():
     clear_screen(); server_ip, server_country, server_isp = get_server_info(); core_version = get_core_version()
-    colorize("Script Version: v7.0 (Python - Client Mode Fixed)", C.CYAN)
+    colorize("Script Version: v7.1 (Python - Final with Status Display)", C.CYAN)
     colorize(f"Core Version: {core_version}", C.CYAN)
     print(C.YELLOW + "═════════════════════════════════════════════" + C.RESET)
     colorize(f"IP Address: {server_ip}", C.WHITE); colorize(f"Location: {server_country}", C.WHITE); colorize(f"Datacenter: {server_isp}", C.WHITE)
