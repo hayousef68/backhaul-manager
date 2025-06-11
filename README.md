@@ -16,5 +16,4 @@
 - ✅ حذف کامل
 
 ## 🚀 نصب سریع
-```bash
-wget -O install.sh https://raw.githubusercontent.com/hayousef68/backhaul-manager/main/install.sh && sudo bash install.sh
+curl -sSL -o backhaul_manager.py https://raw.githubusercontent.com/hayousef68/backhaul-manager/main/install.sh && sudo python3 backhaul_manager.py
