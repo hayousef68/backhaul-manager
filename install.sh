@@ -201,10 +201,8 @@ def manage_tunnel():
             elif action == '4': clear_screen(); run_cmd(['systemctl', 'status', service_name], as_root=True, capture=False); press_key()
             elif action == '5':
                 clear_screen()
-                try:
-                    run_cmd(['journalctl', '-u', service_name, '-f', '--no-pager'], as_root=True, capture=False)
-                except KeyboardInterrupt:
-                    pass
+                try: run_cmd(['journalctl', '-u', service_name, '-f', '--no-pager'], as_root=True, capture=False)
+                except KeyboardInterrupt: pass
             elif action == '0': return
         else: colorize("Invalid action.", C.RED)
         if action in ['1','2','3']: time.sleep(2)
@@ -223,14 +221,6 @@ def check_tunnels_status():
         print(f"{safe_name:<20} {info['type']:<10} {info['transport']:<10} {info['addr']:<22} {status}")
     press_key()
 
-# ... other functions are unchanged ...
-def configure_new_tunnel():
-    clear_screen(); colorize("--- Configure a New Tunnel ---", C.CYAN, bold=True)
-    print("\n1) Create Iran Server Tunnel\n2) Create Kharej Client Tunnel")
-    choice = input("Enter your choice [1-2]: ")
-    if choice == '1': create_server_tunnel()
-    elif choice == '2': create_client_tunnel()
-    else: colorize("Invalid choice.", C.RED); time.sleep(1)
 def install_backhaul_core():
     clear_screen(); colorize("--- Installing Backhaul Core (v0.6.5) ---", C.YELLOW, bold=True)
     try:
@@ -244,6 +234,7 @@ def install_backhaul_core():
         colorize("✅ Backhaul Core v0.6.5 installed successfully!", C.GREEN, bold=True)
     except Exception as e: colorize(f"An error occurred: {e}", C.RED)
     press_key()
+
 def uninstall_backhaul():
     clear_screen(); colorize("--- Uninstall Backhaul ---", C.RED, bold=True)
     confirm = input("Are you sure? (y/n): ").lower()
@@ -255,9 +246,10 @@ def uninstall_backhaul():
                 run_cmd(['systemctl', 'disable', '--now', f'backhaul-{filename[:-5]}'], as_root=True)
                 run_cmd(['rm', '-f', f'{SERVICE_DIR}/backhaul-{filename[:-5]}.service'], as_root=True)
     run_cmd(['rm', '-rf', BACKHAUL_DIR, CONFIG_DIR, LOG_DIR], as_root=True)
-    if os.path.exists(SCRIPT_PATH): run_cmd(['rm', '-f', SCRIPT_PATH], as_root=True)
+    if os.path.exists('/usr/local/bin/backhaul_manager.py'): run_cmd(['rm', '-f', '/usr/local/bin/backhaul_manager.py'], as_root=True)
     run_cmd(['systemctl', 'daemon-reload'], as_root=True)
     colorize("✅ Backhaul uninstalled completely.", C.GREEN); sys.exit(0)
+
 def run_system_optimizer():
     clear_screen(); colorize("--- Run Hawshemi's Linux Optimizer ---", C.CYAN, bold=True)
     colorize("This will download and execute the latest script from GitHub.", C.YELLOW)
@@ -284,7 +276,9 @@ def display_menu():
     colorize(" 6. Uninstall Backhaul", C.RED, bold=True); colorize(" 0. Exit", C.YELLOW); print("-------------------------------------")
 
 def main():
-    run_cmd(["mkdir", "-p", BACKHAUL_DIR, CONFIG_DIR, LOG_DIR, TUNNELS_DIR], as_root=True)
+    if not os.path.exists(os.path.join(CONFIG_DIR, ".first_run_done")):
+         run_cmd(["mkdir", "-p", BACKHAUL_DIR, CONFIG_DIR, LOG_DIR, TUNNELS_DIR], as_root=True)
+         with open(os.path.join(CONFIG_DIR, ".first_run_done"), "w") as f: f.write("done")
     while True:
         display_menu()
         try:
