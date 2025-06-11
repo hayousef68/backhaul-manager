@@ -11,11 +11,10 @@ import string
 
 # ====================================================================
 #
-#       🚀 Backhaul Manager v6.0 (Python - Final Stable) 🚀
+#    🚀 Backhaul Manager v6.3 (Python - Nodelay/Sniffer Support) 🚀
 #
-#   This version fixes both the NameError and IndentationError bugs.
-#   It includes full functionality for creating, managing, and
-#   validating tunnels in a stable Python environment.
+#   This version adds prompts for Nodelay and Sniffer configuration
+#   during tunnel creation as requested.
 #
 # ====================================================================
 
@@ -51,8 +50,7 @@ def get_server_info():
         with request.urlopen('http://ip-api.com/json/?fields=query,country,isp', timeout=5) as response:
             data = json.loads(response.read().decode())
             return data.get('query', 'N/A'), data.get('country', 'N/A'), data.get('isp', 'N/A')
-    except:
-        return "N/A", "N/A", "N/A"
+    except: return "N/A", "N/A", "N/A"
 
 def get_core_version():
     if os.path.exists(BINARY_PATH):
@@ -63,10 +61,10 @@ def get_core_version():
 def check_requirements():
     requirements = ['wget', 'tar', 'systemctl', 'openssl', 'jq', 'ss']
     missing = [cmd for cmd in requirements if shutil.which(cmd) is None]
-    if missing:
-        colorize(f"Missing required packages: {', '.join(missing)}", C.RED, bold=True); sys.exit(1)
+    if missing: colorize(f"Missing required packages: {', '.join(missing)}", C.RED, bold=True); sys.exit(1)
 
 def create_service(tunnel_name):
+    service_name = f"backhaul-{tunnel_name}.service"
     service_content = f"""
 [Unit]
 Description=Backhaul Tunnel Service - {tunnel_name}
@@ -81,7 +79,7 @@ LimitNOFILE=1048576
 [Install]
 WantedBy=multi-user.target
 """
-    service_path = f"{SERVICE_DIR}/backhaul-{tunnel_name}.service"
+    service_path = f"{SERVICE_DIR}/{service_name}"
     with open(f"/tmp/{service_name}", "w") as f: f.write(service_content)
     run_cmd(['mv', f'/tmp/{service_name}', service_path], as_root=True)
     run_cmd(['systemctl', 'daemon-reload'], as_root=True)
@@ -94,16 +92,28 @@ def is_port_in_use(port):
 # --- Feature Functions ---
 
 def create_server_tunnel():
-    clear_screen()
-    colorize("--- 🇮🇷 Create Iran Server Tunnel ---", C.GREEN, bold=True)
+    clear_screen(); colorize("--- 🇮🇷 Create Iran Server Tunnel ---", C.GREEN, bold=True)
     tunnel_name = get_valid_tunnel_name()
     transport = input("Choose transport protocol (default: tcp): ") or "tcp"
-    bind_addr = input("Enter bind address (e.g., 0.0.0.0:3080): ") or "0.0.0.0:3080"
+    listen_port = input("Enter server listen port (e.g., 3080): ") or "3080"
+    bind_addr = f"0.0.0.0:{listen_port}"
     token = input("Enter auth token (leave empty to generate): ")
     if not token:
         token = ''.join(random.choices(string.ascii_letters + string.digits, k=16))
         colorize(f"🔑 Generated token: {token}", C.YELLOW)
+
+    # --- NEW: Nodelay and Sniffer prompts ---
+    nodelay_input = input("Enable TCP_NODELAY? (y/n, default: n): ").lower()
+    nodelay = True if nodelay_input == 'y' else False
     
+    sniffer_input = input("Enable Sniffer? (y/n, default: n): ").lower()
+    sniffer = True if sniffer_input == 'y' else False
+    
+    web_port = 0
+    if sniffer:
+        web_port_str = input("Enter sniffer web interface port (default: 0 to disable): ") or "0"
+        web_port = int(web_port_str) if web_port_str.isdigit() else 0
+
     ports_str = input("Enter forwarding ports (e.g., 443, 8080=8000): ")
     valid_ports_list = []
     if ports_str:
@@ -113,40 +123,64 @@ def create_server_tunnel():
                 listen_part = port_entry.split('=')[0]
                 port_to_check_str = listen_part.split(':')[-1]
                 if port_to_check_str.isdigit():
-                    port_to_check = int(port_to_check_str)
-                    if not is_port_in_use(port_to_check):
-                        colorize(f"Port {port_to_check} is available. Added.", C.GREEN)
+                    if not is_port_in_use(int(port_to_check_str)):
+                        colorize(f"Port {port_to_check_str} is available. Added.", C.GREEN)
                         valid_ports_list.append(port_entry)
                     else:
-                        colorize(f"Port {port_to_check} is already in use. Skipped.", C.RED)
-                else:
-                    colorize(f"Entry '{port_entry}' added without validation (complex format).", C.YELLOW)
-                    valid_ports_list.append(port_entry)
-            except Exception:
-                colorize(f"Could not parse entry '{port_entry}'. Added without validation.", C.YELLOW)
-                valid_ports_list.append(port_entry)
+                        colorize(f"Port {port_to_check_str} is already in use. Skipped.", C.RED)
+                else: valid_ports_list.append(port_entry)
+            except: valid_ports_list.append(port_entry)
 
-    config_content = f'[server]\nbind_addr = "{bind_addr}"\ntransport = "{transport}"\ntoken = "{token}"\nlog_level = "info"\nports = {json.dumps(valid_ports_list)}\n'
-    
+    config_dict = {
+        "server": {
+            "bind_addr": bind_addr, "transport": transport, "token": token,
+            "nodelay": nodelay, "sniffer": sniffer, "web_port": web_port,
+            "log_level": "info", "ports": valid_ports_list
+        }
+    }
+
+    if 'mux' in transport:
+        colorize("\n--- Advanced MUX Configuration ---", C.CYAN)
+        mux_con = input("Enter mux_con (default: 8): ") or "8"
+        config_dict["server"]["mux"] = { "con": int(mux_con) }
+
+    config_content = ""
+    for section, params in config_dict.items():
+        config_content += f"[{section}]\n"
+        for key, value in params.items():
+            if key == "mux": continue # Handled as a sub-table
+            if isinstance(value, list): config_content += f'{key} = {json.dumps(value)}\n'
+            elif isinstance(value, bool): config_content += f'{key} = {str(value).lower()}\n'
+            elif isinstance(value, int): config_content += f'{key} = {value}\n'
+            else: config_content += f'{key} = "{value}"\n'
+        if "mux" in params:
+            config_content += f"\n[{section}.mux]\n"
+            for sub_key, sub_value in params["mux"].items():
+                 config_content += f'{sub_key} = {sub_value}\n'
+
     with open(f"/tmp/{tunnel_name}.toml", "w") as f: f.write(config_content)
     run_cmd(['mv', f'/tmp/{tunnel_name}.toml', f"{TUNNELS_DIR}/{tunnel_name}.toml"], as_root=True)
     create_service(tunnel_name)
     run_cmd(['systemctl', 'start', f'backhaul-{tunnel_name}.service'], as_root=True)
     colorize(f"\n✅ Server tunnel '{tunnel_name}' created!", C.GREEN, bold=True); press_key()
 
+# ... (The rest of the functions like manage_tunnel, install_core, etc., are unchanged)
 def create_client_tunnel():
     clear_screen(); colorize("--- 🌍 Create Kharej Client Tunnel ---", C.CYAN, bold=True)
     tunnel_name = get_valid_tunnel_name()
     remote_addr = input("Enter the Iran Server address (IP:PORT): ")
-    transport = input("Choose transport protocol (default: tcp): ") or "tcp"
+    transport = input("Choose a transport protocol (default: tcp): ") or "tcp"
     token = input("Enter the auth token from the server: ")
-    config_content = f'[client]\nremote_addr = "{remote_addr}"\ntransport = "{transport}"\ntoken = "{token}"\nlog_level = "info"\n'
+    nodelay_input = input("Enable TCP_NODELAY? (y/n, default: n): ").lower()
+    nodelay = 'true' if nodelay_input == 'y' else 'false'
+    config_content = f'[client]\nremote_addr = "{remote_addr}"\ntransport = "{transport}"\ntoken = "{token}"\nnodelay = {nodelay}\nlog_level = "info"\n'
+    if 'mux' in transport:
+        config_content += "\n[client.mux]\n"
     with open(f"/tmp/{tunnel_name}.toml", "w") as f: f.write(config_content)
     run_cmd(['mv', f'/tmp/{tunnel_name}.toml', f"{TUNNELS_DIR}/{tunnel_name}.toml"], as_root=True)
     create_service(tunnel_name)
     run_cmd(['systemctl', 'start', f'backhaul-{tunnel_name}.service'], as_root=True)
     colorize(f"\n✅ Client tunnel '{tunnel_name}' created!", C.GREEN, bold=True); press_key()
-
 def configure_new_tunnel():
     clear_screen(); colorize("--- Configure a New Tunnel ---", C.CYAN, bold=True)
     print("\n1) Create Iran Server Tunnel\n2) Create Kharej Client Tunnel")
@@ -154,7 +188,6 @@ def configure_new_tunnel():
     if choice == '1': create_server_tunnel()
     elif choice == '2': create_client_tunnel()
     else: colorize("Invalid choice.", C.RED); time.sleep(1)
-
 def manage_tunnel():
     clear_screen(); colorize("--- 🔧 Tunnel Management Menu ---", C.YELLOW, bold=True)
     try:
@@ -189,10 +222,8 @@ def manage_tunnel():
         elif action == '4': clear_screen(); run_cmd(['systemctl', 'status', service_name], as_root=True, capture=False); press_key()
         elif action == '5':
             clear_screen()
-            try:
-                run_cmd(['journalctl', '-u', service_name, '-f', '--no-pager'], as_root=True, capture=False)
-            except KeyboardInterrupt:
-                pass
+            try: run_cmd(['journalctl', '-u', service_name, '-f', '--no-pager'], as_root=True, capture=False)
+            except KeyboardInterrupt: pass
         elif action == '6':
             confirm = input(f"DELETE '{selected_tunnel}'? (y/n): ").lower()
             if confirm == 'y':
@@ -254,7 +285,7 @@ def uninstall_backhaul():
 
 def display_menu():
     clear_screen(); server_ip, server_country, server_isp = get_server_info(); core_version = get_core_version()
-    colorize("Script Version: v6.0 (Python - Final Stable)", C.CYAN)
+    colorize("Script Version: v6.3 (Python - Nodelay/Sniffer)", C.CYAN)
     colorize(f"Core Version: {core_version}", C.CYAN)
     print(C.YELLOW + "═════════════════════════════════════════════" + C.RESET)
     colorize(f"IP Address: {server_ip}", C.WHITE); colorize(f"Location: {server_country}", C.WHITE); colorize(f"Datacenter: {server_isp}", C.WHITE)
