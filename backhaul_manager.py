@@ -12,7 +12,7 @@ import ipaddress
 
 # ====================================================================
 #
-#    🚀 Backhaul Manager v7.6 (NodeDelay Default Enabled) 🚀
+#    🚀 Backhaul Manager v7.5 (Final - Enhanced Validation) 🚀
 #
 # ====================================================================
 
@@ -184,10 +184,9 @@ def create_server_tunnel():
         token = ''.join(random.choices(string.ascii_letters + string.digits, k=16))
         colorize(f"🔑 Generated token: {token}", C.YELLOW)
     
-    # TCP_NODELAY پیش‌فرض فعال - سؤال برای غیرفعال کردن
-    nodelay_input = get_valid_input("Disable TCP_NODELAY? (y/n, default: n - keeps enabled): ", input_type='str') or "n"
+    nodelay_input = get_valid_input("Enable TCP_NODELAY? (y/n, default: n): ", input_type='str') or "n"
     if nodelay_input is None: return
-    nodelay = nodelay_input.lower() != 'y'  # اگر y گفت غیرفعال شود، در غیر این صورت فعال باقی بماند
+    nodelay = nodelay_input.lower() == 'y'
     
     sniffer_input = get_valid_input("Enable Sniffer? (y/n, default: n): ", input_type='str') or "n"
     if sniffer_input is None: return
@@ -240,7 +239,6 @@ def create_server_tunnel():
     service_name = f'backhaul-{tunnel_name}.service'
     status_text = get_service_status(service_name)
     colorize(f"   Listening Port: {listen_port}", C.WHITE)
-    colorize(f"   TCP_NODELAY: {'Enabled' if nodelay else 'Disabled'}", C.WHITE)
     print(f"   Status: {status_text}")
     if valid_ports_list:
         colorize(f"   Forwarded Ports: {', '.join(valid_ports_list[:3])}", C.WHITE)
@@ -283,10 +281,9 @@ def create_client_tunnel():
     connection_pool = get_valid_input("Enter connection pool size (default: 8): ", input_type='int') or 8
     if connection_pool is None: return
     
-    # TCP_NODELAY پیش‌فرض فعال - سؤال برای غیرفعال کردن
-    nodelay_input = get_valid_input("Disable TCP_NODELAY? (y/n, default: n - keeps enabled): ", input_type='str') or "n"
+    nodelay_input = get_valid_input("Enable TCP_NODELAY? (y/n, default: n): ", input_type='str') or "n"
     if nodelay_input is None: return
-    nodelay = nodelay_input.lower() != 'y'  # اگر y گفت غیرفعال شود، در غیر این صورت فعال باقی بماند
+    nodelay = nodelay_input.lower() == 'y'
     
     sniffer_input = get_valid_input("Enable Sniffer? (y/n, default: n): ", input_type='str') or "n"
     if sniffer_input is None: return
@@ -328,8 +325,263 @@ def create_client_tunnel():
     service_name = f'backhaul-{tunnel_name}.service'
     status_text = get_service_status(service_name)
     colorize(f"   Connecting to Port: {server_port}", C.WHITE)
-    colorize(f"   TCP_NODELAY: {'Enabled' if nodelay else 'Disabled'}", C.WHITE)
     print(f"   Status: {status_text}")
     press_key()
 
-# ادامه کد... (سایر توابع بدون تغییر)
+def manage_tunnel():
+    clear_screen(); colorize("--- 🔧 Tunnel Management Menu ---", C.YELLOW, bold=True)
+    try:
+        tunnel_files = [f for f in sorted(os.listdir(TUNNELS_DIR)) if f.endswith(".toml")]
+        tunnels_info = []
+        for filename in tunnel_files:
+            tunnel_name = filename[:-5]
+            config_path = os.path.join(TUNNELS_DIR, filename)
+            tunnel_data = parse_toml_config(config_path)
+            tunnels_info.append({'name': tunnel_name, 'type': tunnel_data['type'], 'addr': tunnel_data['addr']})
+    except FileNotFoundError: tunnels_info = []
+    
+    if not tunnels_info: colorize("⚠️ No tunnels found.", C.YELLOW); press_key(); return
+    
+    print(f"{C.BOLD}{'#':<4} {'NAME':<20} {'TYPE':<8} {'ADDRESS/PORT'}{C.RESET}")
+    print(f"{'---':<4} {'----':<20} {'----':<8} {'------------'}")
+    for i, info in enumerate(tunnels_info, 1):
+        safe_name = sanitize_for_print(info['name'])
+        print(f"{i:<4} {safe_name:<20} {info['type']:<8} {info['addr']}")
+
+    choice = get_valid_input("\nSelect a tunnel to manage (or 0 to return): ", valid_range=list(range(0, len(tunnels_info) + 1)))
+    if choice is None or choice == 0: return
+    
+    try:
+        selected_tunnel = tunnels_info[choice - 1]['name']
+    except IndexError: colorize("Invalid selection.", C.RED); time.sleep(1); return
+
+    safe_selected_tunnel = sanitize_for_print(selected_tunnel)
+
+    while True:
+        clear_screen(); colorize(f"--- Managing '{safe_selected_tunnel}' ---", C.CYAN)
+        print("1) Start\n2) Stop\n3) Restart\n4) View Status\n5) View Logs"); colorize("6) Delete Tunnel", C.RED); print("\n0) Back")
+        action = get_valid_input("Choose an action: ", valid_range=list(range(0, 7)))
+        if action is None: continue
+        
+        service_name = f"backhaul-{selected_tunnel}.service"
+
+        if action == 6:
+            confirm = get_valid_input(f"DELETE '{safe_selected_tunnel}'? (y/n): ", input_type='str')
+            if confirm is None: continue
+            if confirm.lower() == 'y':
+                colorize(f"Stopping service: {service_name}", C.YELLOW)
+                run_cmd(['systemctl', 'stop', service_name], as_root=True)
+                time.sleep(1)
+                config_path = f"{TUNNELS_DIR}/{selected_tunnel}.toml"
+                colorize(f"Forcefully terminating any process using {config_path}...", C.YELLOW)
+                run_cmd(['pkill', '-f', config_path], as_root=True)
+                colorize("Disabling and removing service files...", C.YELLOW)
+                run_cmd(['systemctl', 'disable', service_name], as_root=True)
+                run_cmd(['rm', '-f', f"{SERVICE_DIR}/{service_name}"], as_root=True)
+                run_cmd(['rm', '-f', config_path], as_root=True)
+                run_cmd(['systemctl', 'daemon-reload'], as_root=True)
+                colorize(f"✅ Tunnel '{safe_selected_tunnel}' has been completely deleted.", C.GREEN, bold=True)
+                press_key()
+                return
+            else:
+                colorize("Deletion cancelled.", C.YELLOW)
+
+        elif action in [1,2,3,4,5,0]:
+            if action == 1: 
+                run_cmd(['systemctl', 'start', service_name], as_root=True)
+                colorize("Started.", C.GREEN)
+            elif action == 2: 
+                run_cmd(['systemctl', 'stop', service_name], as_root=True)
+                colorize("Stopped.", C.YELLOW)
+            elif action == 3: 
+                run_cmd(['systemctl', 'restart', service_name], as_root=True)
+                colorize("Restarted.", C.GREEN)
+            elif action == 4: 
+                clear_screen()
+                run_cmd(['systemctl', 'status', service_name], as_root=True, capture=False)
+                press_key()
+            elif action == 5:
+                clear_screen()
+                try: run_cmd(['journalctl', '-u', service_name, '-f', '--no-pager'], as_root=True, capture=False)
+                except KeyboardInterrupt: pass
+            elif action == 0: return
+        if action in [1,2,3]: time.sleep(2)
+
+def configure_new_tunnel():
+    clear_screen(); colorize("--- Configure a New Tunnel ---", C.CYAN, bold=True)
+    print("\n1) Create Iran Server Tunnel\n2) Create Kharej Client Tunnel")
+    choice = get_valid_input("Enter your choice [1-2]: ", valid_range=[1, 2])
+    if choice is None: return
+    if choice == 1: create_server_tunnel()
+    elif choice == 2: create_client_tunnel()
+
+def install_backhaul_core():
+    clear_screen(); colorize("--- Installing Backhaul Core (v0.6.5) ---", C.YELLOW, bold=True)
+    try:
+        arch = os.uname().machine
+        if arch == "x86_64": url = "https://github.com/Musixal/Backhaul/releases/download/v0.6.5/backhaul_linux_amd64.tar.gz"
+        elif arch == "aarch64": url = "https://github.com/Musixal/Backhaul/releases/download/v0.6.5/backhaul_linux_arm64.tar.gz"
+        else: colorize(f"Unsupported architecture: {arch}", C.RED); press_key(); return
+        colorize(f"Downloading from direct link for {arch}...", C.YELLOW)
+        run_cmd(["wget", url, "-O", "/tmp/backhaul.tar.gz"])
+        run_cmd(["tar", "-xzf", "/tmp/backhaul.tar.gz", "-C", "/tmp"])
+        run_cmd(["mv", "/tmp/backhaul", BINARY_PATH], as_root=True)
+        run_cmd(["chmod", "+x", BINARY_PATH], as_root=True)
+        # Clean up temporary files
+        run_cmd(["rm", "-f", "/tmp/backhaul.tar.gz"], as_root=True)
+        colorize("✅ Backhaul Core v0.6.5 installed successfully!", C.GREEN, bold=True)
+    except Exception as e: colorize(f"An error occurred: {e}", C.RED)
+    press_key()
+
+def system_optimizer():
+    clear_screen(); colorize("--- 🚀 System Optimization (Hawshemi) ---", C.CYAN, bold=True)
+    optimizations = [
+        ("fs.file-max", "1048576"),
+        ("net.core.somaxconn", "65535"),
+        ("net.ipv4.tcp_tw_reuse", "1"),
+        ("net.ipv4.tcp_fin_timeout", "30"),
+        ("net.ipv4.tcp_congestion_control", "bbr")
+    ]
+    colorize("Applying kernel optimizations...", C.YELLOW)
+    for param, value in optimizations:
+        result = run_cmd(['sysctl', '-w', f'{param}={value}'], as_root=True)
+        if result.returncode == 0:
+            colorize(f"✓ {param} = {value}", C.GREEN)
+        else:
+            colorize(f"✗ Failed to set {param}", C.RED)
+    
+    # Apply limits.conf changes
+    try:
+        with open('/etc/security/limits.conf', 'a') as f:
+            f.write("\n# Backhaul optimizations\n* soft nofile 1048576\n* hard nofile 1048576\n")
+        colorize("✓ File descriptor limits updated", C.GREEN)
+    except Exception as e:
+        colorize(f"✗ Failed to update limits.conf: {e}", C.RED)
+    
+    colorize("\n✅ System optimization completed!", C.GREEN, bold=True)
+    colorize("Note: Some changes may require a reboot to take effect.", C.YELLOW)
+    press_key()
+
+def check_tunnels_status():
+    clear_screen(); colorize("--- Backhaul Tunnels Status ---", C.CYAN, bold=True)
+    try:
+        tunnel_files = [f for f in sorted(os.listdir(TUNNELS_DIR)) if f.endswith(".toml")]
+        tunnels_info = []
+        
+        for filename in tunnel_files:
+            tunnel_name = filename[:-5]
+            config_path = os.path.join(TUNNELS_DIR, filename)
+            tunnel_data = parse_toml_config(config_path)
+            
+            service_name = f"backhaul-{tunnel_name}.service"
+            status = get_service_status(service_name)
+            
+            # Extract port from address
+            port_display = "N/A"
+            if tunnel_data['addr'] != "N/A" and ':' in tunnel_data['addr']:
+                port_display = tunnel_data['addr'].split(':')[-1]
+            
+            tunnels_info.append({
+                'name': sanitize_for_print(tunnel_name),
+                'type': tunnel_data['type'],
+                'addr': tunnel_data['addr'],
+                'port': port_display,
+                'status': status
+            })
+            
+    except FileNotFoundError: tunnels_info = []
+    
+    if not tunnels_info: 
+        colorize("⚠️ No tunnels found.", C.YELLOW)
+        press_key()
+        return
+    
+    print(f"{C.BOLD}{'NAME':<20} {'TYPE':<8} {'PORT':<8} {'ADDRESS/PORT':<22} {'STATUS'}{C.RESET}")
+    print(f"{'----':<20} {'----':<8} {'----':<8} {'------------':<22} {'------'}")
+    
+    for info in tunnels_info:
+        print(f"{info['name']:<20} {info['type']:<8} {info['port']:<8} {info['addr']:<22} {info['status']}")
+    
+    press_key()
+
+def uninstall_backhaul():
+    clear_screen(); colorize("--- Uninstall Backhaul ---", C.RED, bold=True)
+    confirm = get_valid_input("Are you sure? This will remove all tunnels and configurations (y/n): ", input_type='str')
+    if confirm is None or confirm.lower() != "y": 
+        colorize("Uninstall cancelled.", C.GREEN)
+        press_key()
+        return
+    
+    colorize("Stopping all Backhaul processes...", C.YELLOW)
+    run_cmd(['pkill', '-f', BINARY_PATH], as_root=True)
+    
+    if os.path.exists(TUNNELS_DIR):
+        tunnel_files = [f for f in os.listdir(TUNNELS_DIR) if f.endswith(".toml")]
+        for filename in tunnel_files:
+            tunnel_name = filename[:-5]
+            service_name = f'backhaul-{tunnel_name}.service'
+            colorize(f"Removing tunnel: {tunnel_name}", C.YELLOW)
+            run_cmd(['systemctl', 'disable', '--now', service_name], as_root=True)
+            run_cmd(['rm', '-f', f'{SERVICE_DIR}/{service_name}'], as_root=True)
+    
+    colorize("Removing directories and files...", C.YELLOW)
+    run_cmd(['rm', '-rf', BACKHAUL_DIR, CONFIG_DIR, LOG_DIR], as_root=True)
+    run_cmd(['systemctl', 'daemon-reload'], as_root=True)
+    colorize("✅ Backhaul uninstalled completely.", C.GREEN, bold=True)
+    sys.exit(0)
+
+# --- Menu Display and Main Loop ---
+def display_menu():
+    clear_screen()
+    server_ip, server_country, server_isp = get_server_info()
+    core_version = get_core_version()
+    
+    colorize("Script Version: v7.5 (Enhanced Validation)", C.CYAN)
+    colorize(f"Core Version: {core_version}", C.CYAN)
+    print(C.YELLOW + "═════════════════════════════════════════════" + C.RESET)
+    colorize(f"IP Address: {server_ip}", C.WHITE)
+    colorize(f"Location: {server_country}", C.WHITE)
+    colorize(f"Datacenter: {server_isp}", C.WHITE)
+    core_status = f"{C.GREEN}Installed{C.RESET}" if core_version != "N/A" else f"{C.RED}Not Installed{C.RESET}"
+    colorize(f"Backhaul Core: {core_status}", C.WHITE)
+    print(C.YELLOW + "═════════════════════════════════════════════" + C.RESET)
+    print("")
+    colorize(" 1. Configure a new tunnel", C.WHITE, bold=True)
+    colorize(" 2. Tunnel management menu", C.WHITE, bold=True)
+    colorize(" 3. Check tunnels status", C.WHITE)
+    colorize(" 4. Run System Optimizer (Hawshemi)", C.WHITE)
+    colorize(" 5. Install/Update Backhaul Core", C.WHITE)
+    colorize(" 6. Uninstall Backhaul", C.RED, bold=True)
+    colorize(" 0. Exit", C.YELLOW)
+    print("-------------------------------------")
+
+def main():
+    # Create necessary directories
+    run_cmd(["mkdir", "-p", BACKHAUL_DIR, CONFIG_DIR, LOG_DIR, TUNNELS_DIR], as_root=True)
+    
+    # Auto-install core if missing
+    if not os.path.exists(BINARY_PATH): 
+        colorize("Backhaul core not found. Installing automatically...", C.YELLOW)
+        install_backhaul_core()
+    
+    while True:
+        display_menu()
+        choice = get_valid_input("Enter your choice [0-6]: ", valid_range=list(range(0, 7)))
+        if choice is None: continue
+        
+        if choice == 1: configure_new_tunnel()
+        elif choice == 2: manage_tunnel()
+        elif choice == 3: check_tunnels_status()
+        elif choice == 4: system_optimizer()
+        elif choice == 5: install_backhaul_core()
+        elif choice == 6: uninstall_backhaul()
+        elif choice == 0: 
+            colorize("Goodbye!", C.GREEN)
+            sys.exit(0)
+
+if __name__ == "__main__":
+    if os.geteuid() != 0: 
+        colorize("Error: This script must be run as root.", C.RED, bold=True)
+        sys.exit(1)
+    check_requirements()
+    main()
