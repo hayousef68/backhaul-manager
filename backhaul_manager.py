@@ -452,40 +452,34 @@ def configure_new_tunnel():
 
 def install_backhaul_core():
     clear_screen()
-    colorize("--- Installing Backhaul Core (v0.6.5) ---", C.YELLOW, bold=True)
+    colorize("--- Installing/Updating Backhaul Core ---", C.YELLOW, bold=True)
     
     try:
-        arch = os.uname().machine
-        if arch == "x86_64": 
-            url = "https://github.com/Musixal/Backhaul/releases/download/v0.6.5/backhaul_linux_amd64.tar.gz"
-        elif arch == "aarch64": 
-            url = "https://github.com/Musixal/Backhaul/releases/download/v0.6.5/backhaul_linux_arm64.tar.gz"
-        else: 
-            colorize(f"Unsupported architecture: {arch}", C.RED)
-            press_key()
-            return
+        # New direct-download URL provided by the user
+        url = "https://github.com/hayousef68/backhaul-manager/releases/download/untagged-4a8761ce89cd0de4fee6/backhaul"
         
-        colorize(f"Downloading from GitHub for {arch}...", C.YELLOW)
+        colorize("Downloading core binary from the new source...", C.YELLOW)
         
-        # Download
-        result = run_cmd(["wget", url, "-O", "/tmp/backhaul.tar.gz"])
+        # Temporary path for the downloaded binary
+        temp_binary_path = "/tmp/backhaul"
+        
+        # Download using wget
+        result = run_cmd(["wget", url, "-O", temp_binary_path])
         if result.returncode != 0:
-            colorize("Download failed. Trying with curl...", C.YELLOW)
-            result = run_cmd(["curl", "-L", url, "-o", "/tmp/backhaul.tar.gz"])
+            colorize("Download failed with wget. Trying with curl...", C.YELLOW)
+            # Fallback to curl if wget fails
+            result = run_cmd(["curl", "-L", url, "-o", temp_binary_path])
             if result.returncode != 0:
                 colorize("Download failed with both wget and curl.", C.RED)
                 press_key()
                 return
         
-        # Extract and install
-        run_cmd(["tar", "-xzf", "/tmp/backhaul.tar.gz", "-C", "/tmp"])
-        run_cmd(["mv", "/tmp/backhaul", BINARY_PATH], as_root=True)
+        # Move the downloaded binary to the final destination
+        run_cmd(["mv", temp_binary_path, BINARY_PATH], as_root=True)
+        # Make the binary executable
         run_cmd(["chmod", "+x", BINARY_PATH], as_root=True)
         
-        # Clean up
-        run_cmd(["rm", "-f", "/tmp/backhaul.tar.gz"], as_root=True)
-        
-        colorize("✅ Backhaul Core v0.6.5 installed successfully!", C.GREEN, bold=True)
+        colorize("✅ Backhaul Core installed successfully from the new source!", C.GREEN, bold=True)
         
     except Exception as e:
         colorize(f"Installation error: {e}", C.RED)
@@ -612,7 +606,7 @@ def display_menu():
     server_ip, server_country, server_isp = get_server_info()
     core_version = get_core_version()
     
-    colorize("Script Version: v7.6 (Iran/Kharej Color Coded Final)", C.CYAN)
+    colorize("Script Version: v7.6 (You$ef)", C.CYAN)
     colorize(f"Core Version: {core_version}", C.CYAN)
     print(C.YELLOW + "═════════════════════════════════════════════" + C.RESET)
     colorize(f"IP Address: {server_ip}", C.WHITE)
