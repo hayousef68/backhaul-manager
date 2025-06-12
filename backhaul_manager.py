@@ -11,10 +11,7 @@ import string
 
 # ====================================================================
 #
-#    🚀 Backhaul Manager v7.1 (Python - Final with Status Display) 🚀
-#
-#   This version adds status verification after tunnel creation.
-#   This version is modified to show port/address and status in the management menu.
+#    🚀 Backhaul Manager v7.3 (Final - Auto Core + Uninstall) 🚀
 #
 # ====================================================================
 
@@ -25,7 +22,7 @@ class C:
 BACKHAUL_DIR, CONFIG_DIR, SERVICE_DIR = "/opt/backhaul", "/etc/backhaul", "/etc/systemd/system"
 LOG_DIR, BINARY_PATH, TUNNELS_DIR = "/var/log/backhaul", f"{BACKHAUL_DIR}/backhaul", f"{CONFIG_DIR}/tunnels"
 
-# --- Helper Functions (unchanged) ---
+# --- Helper Functions ---
 def run_cmd(command, as_root=False, capture=True):
     if as_root: command.insert(0, "sudo")
     if capture: return subprocess.run(command, capture_output=True, text=True, check=False)
@@ -39,7 +36,7 @@ def get_valid_tunnel_name():
     while True:
         tunnel_name = input("Enter a name for this tunnel (e.g., my-tunnel): ")
         if tunnel_name and re.match(r'^[a-zA-Z0-9_-]+$', tunnel_name): return tunnel_name
-        else: colorize("Invalid name! Please use only English letters, numbers, dash (-), and underscore (_).", C.RED)
+        else: colorize("Invalid name! Use English letters, numbers, dash (-), and underscore (_).", C.RED)
 def get_server_info():
     try:
         with request.urlopen('http://ip-api.com/json/?fields=query,country,isp', timeout=5) as response:
@@ -70,7 +67,6 @@ def sanitize_for_print(name):
     return name.encode('ascii', 'ignore').decode('ascii')
 
 # --- Feature Functions ---
-
 def create_server_tunnel():
     clear_screen(); colorize("--- 🇮🇷 Create Iran Server Tunnel ---", C.GREEN, bold=True)
     tunnel_name = get_valid_tunnel_name()
@@ -112,17 +108,13 @@ def create_server_tunnel():
     with open(f"/tmp/{tunnel_name}.toml", "w") as f: f.write(config_content)
     run_cmd(['mv', f'/tmp/{tunnel_name}.toml', f"{TUNNELS_DIR}/{tunnel_name}.toml"], as_root=True)
     create_service(tunnel_name); run_cmd(['systemctl', 'start', f'backhaul-{tunnel_name}.service'], as_root=True)
-    
     colorize(f"\n✅ Tunnel '{tunnel_name}' created. Verifying status...", C.GREEN, bold=True)
     time.sleep(2)
-    
     service_name = f'backhaul-{tunnel_name}.service'
     result = run_cmd(['systemctl', 'is-active', service_name])
     status_text = f"{C.GREEN}● Active{C.RESET}" if result.stdout.strip() == "active" else f"{C.RED}● Inactive{C.RESET}"
-    
     colorize(f"   Listening Port: {listen_port}", C.WHITE)
     print(f"   Status: {status_text}")
-    
     press_key()
 
 def create_client_tunnel():
@@ -131,7 +123,6 @@ def create_client_tunnel():
     remote_addr = input("Enter server address and port (e.g., 1.2.3.4:3080): ")
     if not remote_addr:
         colorize("Server address is required!", C.RED); time.sleep(1); return
-
     colorize("\nAvailable transport protocols:", C.CYAN); print("  tcp, tcpmux, ws, wss, wsmux, wssmux")
     transport = input("Choose transport protocol (default: tcp): ") or "tcp"
     token = input("Enter auth token (must match server): ")
@@ -165,92 +156,55 @@ def create_client_tunnel():
     run_cmd(['mv', f'/tmp/{tunnel_name}.toml', f"{TUNNELS_DIR}/{tunnel_name}.toml"], as_root=True)
     create_service(tunnel_name)
     run_cmd(['systemctl', 'start', f'backhaul-{tunnel_name}.service'], as_root=True)
-    
     colorize(f"\n✅ Tunnel '{tunnel_name}' created. Verifying status...", C.GREEN, bold=True)
     time.sleep(2)
-
     service_name = f'backhaul-{tunnel_name}.service'
     remote_port = remote_addr.split(':')[-1]
     result = run_cmd(['systemctl', 'is-active', service_name])
     status_text = f"{C.GREEN}● Active{C.RESET}" if result.stdout.strip() == "active" else f"{C.RED}● Inactive{C.RESET}"
-
     colorize(f"   Connecting to Port: {remote_port}", C.WHITE)
     print(f"   Status: {status_text}")
-
     press_key()
 
 def manage_tunnel():
     clear_screen(); colorize("--- 🔧 Tunnel Management Menu ---", C.YELLOW, bold=True)
-    tunnels_info = []
     try:
-        # ===== MODIFICATION START =====
-        # Read each tunnel's config to get address, port, and status.
-        for filename in sorted(os.listdir(TUNNELS_DIR)):
-            if filename.endswith(".toml"):
-                tunnel_name = filename[:-5]
-                addr = "N/A"
-                try:
-                    with open(os.path.join(TUNNELS_DIR, filename), 'r') as f:
-                        for line in f:
-                            if "bind_addr" in line or "remote_addr" in line:
-                                addr = line.split('=')[1].strip().strip('"')
-                                break 
-                except IOError:
-                    addr = "Read Error"
-                
-                # Check service status
-                result = run_cmd(['systemctl', 'is-active', f"backhaul-{tunnel_name}.service"])
-                status = f"{C.GREEN}● Active{C.RESET}" if result.stdout.strip() == "active" else f"{C.RED}● Inactive{C.RESET}"
-                
-                tunnels_info.append({'name': tunnel_name, 'addr': addr, 'status': status})
-        # ===== MODIFICATION END =====
-    except FileNotFoundError:
-        tunnels_info = []
-
-    if not tunnels_info:
-        colorize("⚠️ No tunnels found.", C.YELLOW); press_key(); return
-    
-    # ===== MODIFICATION START: Added STATUS to header =====
-    print(f"{C.BOLD}{'#':<4} {'NAME':<20} {'ADDRESS/PORT':<22} {'STATUS'}{C.RESET}\n{'---':<4} {'----':<20} {'------------':<22} {'------'}")
-    
-    # ===== MODIFICATION START: Added status to printout =====
+        tunnels_info = [{'name': f[:-5], 'addr': 'N/A'} for f in sorted(os.listdir(TUNNELS_DIR)) if f.endswith(".toml")]
+    except FileNotFoundError: tunnels_info = []
+    if not tunnels_info: colorize("⚠️ No tunnels found.", C.YELLOW); press_key(); return
+    print(f"{C.BOLD}{'#':<4} {'NAME':<20} {'ADDRESS/PORT'}{C.RESET}\n{'---':<4} {'----':<20} {'------------'}")
     for i, info in enumerate(tunnels_info, 1):
         safe_name = sanitize_for_print(info['name'])
-        print(f"{i:<4} {safe_name:<20} {info['addr']:<22} {info['status']}")
-    # ===== MODIFICATION END =====
+        print(f"{i:<4} {safe_name:<20}")
 
     try:
         choice = int(input("\nSelect a tunnel to manage (or 0 to return): "))
         if choice == 0: return
         selected_tunnel = tunnels_info[choice - 1]['name']
-    except (ValueError, IndexError):
-        colorize("Invalid selection.", C.RED); time.sleep(1); return
-    
+    except (ValueError, IndexError): colorize("Invalid selection.", C.RED); time.sleep(1); return
+
     safe_selected_tunnel = sanitize_for_print(selected_tunnel)
-    
+
     while True:
         clear_screen(); colorize(f"--- Managing '{safe_selected_tunnel}' ---", C.CYAN)
         print("1) Start\n2) Stop\n3) Restart\n4) View Status\n5) View Logs"); colorize("6) Delete Tunnel", C.RED); print("\n0) Back")
         action = input("Choose an action: ")
         service_name = f"backhaul-{selected_tunnel}.service"
-        
+
         if action == '6':
             confirm = input(f"DELETE '{safe_selected_tunnel}'? (y/n): ").lower()
             if confirm == 'y':
                 colorize(f"Stopping service: {service_name}", C.YELLOW)
                 run_cmd(['systemctl', 'stop', service_name], as_root=True)
-                
                 time.sleep(1)
                 config_path = f"{TUNNELS_DIR}/{selected_tunnel}.toml"
                 colorize(f"Forcefully terminating any process using {config_path}...", C.YELLOW)
                 run_cmd(['pkill', '-f', config_path], as_root=True)
-
                 colorize("Disabling and removing service files...", C.YELLOW)
                 run_cmd(['systemctl', 'disable', service_name], as_root=True)
                 run_cmd(['rm', '-f', f"{SERVICE_DIR}/{service_name}"], as_root=True)
                 run_cmd(['rm', '-f', config_path], as_root=True)
                 run_cmd(['systemctl', 'daemon-reload'], as_root=True)
-                
                 colorize(f"✅ Tunnel '{safe_selected_tunnel}' has been completely deleted.", C.GREEN, bold=True)
                 press_key()
                 return
@@ -275,7 +229,7 @@ def configure_new_tunnel():
     print("\n1) Create Iran Server Tunnel\n2) Create Kharej Client Tunnel")
     choice = input("Enter your choice [1-2]: ")
     if choice == '1': create_server_tunnel()
-    elif choice == '2': create_client_tunnel() 
+    elif choice == '2': create_client_tunnel()
     else: colorize("Invalid choice.", C.RED); time.sleep(1)
 
 def install_backhaul_core():
@@ -290,6 +244,22 @@ def install_backhaul_core():
         run_cmd(["mv", "/tmp/backhaul", BINARY_PATH], as_root=True); run_cmd(["chmod", "+x", BINARY_PATH], as_root=True)
         colorize("✅ Backhaul Core v0.6.5 installed successfully!", C.GREEN, bold=True)
     except Exception as e: colorize(f"An error occurred: {e}", C.RED)
+    press_key()
+
+def system_optimizer():
+    clear_screen(); colorize("--- 🚀 System Optimization (Hawshemi) ---", C.CYAN, bold=True)
+    optimizations = [
+        ("fs.file-max", "1048576"),
+        ("net.core.somaxconn", "65535"),
+        ("net.ipv4.tcp_tw_reuse", "1"),
+        ("net.ipv4.tcp_fin_timeout", "30"),
+        ("net.ipv4.tcp_congestion_control", "bbr")
+    ]
+    for param, value in optimizations:
+        run_cmd(['sysctl', '-w', f'{param}={value}'], as_root=True)
+    with open('/etc/security/limits.conf', 'a') as f:
+        f.write("\n* soft nofile 1048576\n* hard nofile 1048576\n")
+    colorize("✅ Kernel parameters optimized!", C.GREEN)
     press_key()
 
 def check_tunnels_status():
@@ -329,21 +299,29 @@ def uninstall_backhaul():
 # --- Menu Display and Main Loop ---
 def display_menu():
     clear_screen(); server_ip, server_country, server_isp = get_server_info(); core_version = get_core_version()
-    colorize("Script Version: v7.1 (Python - Final with Status Display)", C.CYAN)
+    colorize("Script Version: v7.3 (Auto-Core + Uninstall)", C.CYAN)
     colorize(f"Core Version: {core_version}", C.CYAN)
     print(C.YELLOW + "═════════════════════════════════════════════" + C.RESET)
     colorize(f"IP Address: {server_ip}", C.WHITE); colorize(f"Location: {server_country}", C.WHITE); colorize(f"Datacenter: {server_isp}", C.WHITE)
     core_status = f"{C.GREEN}Installed{C.RESET}" if core_version != "N/A" else f"{C.RED}Not Installed{C.RESET}"
     colorize(f"Backhaul Core: {core_status}", C.WHITE)
     print(C.YELLOW + "═════════════════════════════════════════════" + C.RESET)
-    print(""); colorize(" 1. Configure a new tunnel", C.WHITE, bold=True); colorize(" 2. Tunnel management menu", C.WHITE, bold=True)
-    colorize(" 3. Check tunnels status", C.WHITE); colorize(" 4. Run System Optimizer (Hawshemi)", C.WHITE);
+    print("")
+    colorize(" 1. Configure a new tunnel", C.WHITE, bold=True)
+    colorize(" 2. Tunnel management menu", C.WHITE, bold=True)
+    colorize(" 3. Check tunnels status", C.WHITE)
+    colorize(" 4. Run System Optimizer (Hawshemi)", C.WHITE)
     colorize(" 5. Install/Update Backhaul Core", C.WHITE)
-    colorize(" 6. Uninstall Backhaul", C.RED, bold=True); colorize(" 0. Exit", C.YELLOW);
+    colorize(" 6. Uninstall Backhaul", C.RED, bold=True)
+    colorize(" 0. Exit", C.YELLOW)
     print("-------------------------------------")
 
 def main():
     run_cmd(["mkdir", "-p", BACKHAUL_DIR, CONFIG_DIR, LOG_DIR, TUNNELS_DIR], as_root=True)
+    # Auto-install core if missing
+    if not os.path.exists(BINARY_PATH): 
+        install_backhaul_core(silent=True)
+    
     while True:
         display_menu()
         try:
@@ -351,7 +329,7 @@ def main():
             if choice == '1': configure_new_tunnel()
             elif choice == '2': manage_tunnel()
             elif choice == '3': check_tunnels_status()
-            elif choice == '4': colorize("Optimizer feature will be re-added.", C.YELLOW); press_key()
+            elif choice == '4': system_optimizer()
             elif choice == '5': install_backhaul_core()
             elif choice == '6': uninstall_backhaul()
             elif choice == '0': print("Exiting."); sys.exit(0)
