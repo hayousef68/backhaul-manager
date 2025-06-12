@@ -64,8 +64,13 @@ def get_server_info():
 
 def get_core_version():
     if os.path.exists(BINARY_PATH):
-        result = run_cmd([BINARY_PATH, '--version'])
-        return result.stdout.strip().split('\n')[0] if result.returncode == 0 and result.stdout else "Unknown"
+        try:
+            result = run_cmd([BINARY_PATH, '--version'])
+            return result.stdout.strip().split('\n')[0] if result.returncode == 0 and result.stdout else "Unknown"
+        except OSError as e:
+            if e.errno == 8: # Exec format error
+                return "Exec format error"
+            return "Execution failed"
     return "N/A"
 
 def check_requirements():
@@ -607,13 +612,25 @@ def display_menu():
     core_version = get_core_version()
     
     colorize("Script Version: v7.6 (You$ef)", C.CYAN)
-    colorize(f"Core Version: {core_version}", C.CYAN)
+    
+    # نمایش نسخه یا وضعیت هسته
+    if core_version == "Exec format error":
+        core_version_display = f"{C.RED}Error (Exec format){C.RESET}"
+    elif core_version == "N/A":
+        core_version_display = f"{C.YELLOW}Not Installed{C.RESET}"
+    else:
+        core_version_display = f"{C.GREEN}{core_version}{C.RESET}"
+        
+    colorize(f"Core Status: {core_version_display}", C.CYAN)
+    
     print(C.YELLOW + "═════════════════════════════════════════════" + C.RESET)
     colorize(f"IP Address: {server_ip}", C.WHITE)
     colorize(f"Location: {server_country}", C.WHITE)
     colorize(f"Datacenter: {server_isp}", C.WHITE)
-    core_status = f"{C.GREEN}Installed{C.RESET}" if core_version != "N/A" else f"{C.RED}Not Installed{C.RESET}"
-    colorize(f"Backhaul Core: {core_status}", C.WHITE)
+    
+    core_status_line = f"{C.GREEN}Installed{C.RESET}" if core_version not in ["N/A", "Exec format error", "Unknown", "Execution failed"] else f"{C.RED}Not Installed or Error{C.RESET}"
+    colorize(f"Backhaul Core: {core_status_line}", C.WHITE)
+    
     print(C.YELLOW + "═════════════════════════════════════════════" + C.RESET)
     print("")
     colorize(" 1. Configure a new tunnel", C.WHITE, bold=True)
@@ -629,10 +646,13 @@ def main():
     # Create necessary directories
     run_cmd(["mkdir", "-p", BACKHAUL_DIR, CONFIG_DIR, LOG_DIR, TUNNELS_DIR], as_root=True)
     
-    # Auto-install core if missing
-    if not os.path.exists(BINARY_PATH):
-        colorize("Backhaul core not found. Installing automatically...", C.YELLOW)
-        install_backhaul_core()
+    # '''
+    # --- Auto-install disabled by user request ---
+    # # Auto-install core if missing
+    # if not os.path.exists(BINARY_PATH):
+    #     colorize("Backhaul core not found. Installing automatically...", C.YELLOW)
+    #     install_backhaul_core()
+    # '''
     
     while True:
         display_menu()
