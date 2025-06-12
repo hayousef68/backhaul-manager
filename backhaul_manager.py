@@ -12,14 +12,14 @@ import string
 
 # ====================================================================
 #
-# ðŸš€ Backhaul Manager v7.6 (You$ef) ðŸš€
+# 🚀 Backhaul Manager v7.6 (You$ef) 🚀
 #
 # ====================================================================
 
 # --- Global Variables & Constants ---
 class C:
     RED, GREEN, YELLOW, CYAN, WHITE, BOLD, RESET = '\033[31m', '\033[32m', '\033[33m', '\033[36m', '\033[37m', '\033[1m', '\033[0m'
-    BLUE = '\033[34m'  # Ø§Ø¶Ø§ÙÙ‡ Ú©Ø±Ø¯Ù† Ø±Ù†Ú¯ Ø¢Ø¨ÛŒ Ø¨Ø±Ø§ÛŒ Ø³Ø±ÙˆØ± Ø®Ø§Ø±Ø¬
+    BLUE = '\033[34m'  # اضافه کردن رنگ آبی برای سرور خارج
 
 BACKHAUL_DIR, CONFIG_DIR, SERVICE_DIR = "/opt/backhaul", "/etc/backhaul", "/etc/systemd/system"
 LOG_DIR, BINARY_PATH, TUNNELS_DIR = "/var/log/backhaul", f"{BACKHAUL_DIR}/backhaul", f"{CONFIG_DIR}/tunnels"
@@ -38,14 +38,14 @@ def colorize(text, color, bold=False):
     print(f"{style}{color}{text}{C.RESET}")
 
 def colorize_server_type(tunnel_type, text, bold=False):
-    """Ø±Ù†Ú¯â€ŒØ¨Ù†Ø¯ÛŒ Ø¨Ø± Ø§Ø³Ø§Ø³ Ù†ÙˆØ¹ Ø³Ø±ÙˆØ±"""
+    """رنگ‌بندی بر اساس نوع سرور"""
     style = C.BOLD if bold else ""
     if tunnel_type == "Server":
-        # Ø³Ø±ÙˆØ± Ø§ÛŒØ±Ø§Ù† - Ø±Ù†Ú¯ Ø³Ø¨Ø²
-        print(f"{style}{C.GREEN}ðŸ‡®ðŸ‡· {text}{C.RESET}")
+        # سرور ایران - رنگ سبز
+        print(f"{style}{C.GREEN}🇮🇷 {text}{C.RESET}")
     elif tunnel_type == "Client":
-        # Ø³Ø±ÙˆØ± Ø®Ø§Ø±Ø¬ - Ø±Ù†Ú¯ Ø¢Ø¨ÛŒ
-        print(f"{style}{C.BLUE}ðŸŒ {text}{C.RESET}")
+        # سرور خارج - رنگ آبی
+        print(f"{style}{C.BLUE}🌍 {text}{C.RESET}")
     else:
         print(f"{style}{C.WHITE}{text}{C.RESET}")
 
@@ -129,9 +129,9 @@ def get_service_status(service_name):
     """Get detailed service status"""
     result = run_cmd(['systemctl', 'is-active', service_name])
     if result.returncode == 0 and result.stdout.strip() == "active":
-        return f"{C.GREEN}â— Active{C.RESET}"
+        return f"{C.GREEN}● Active{C.RESET}"
     else:
-        return f"{C.RED}â— Inactive{C.RESET}"
+        return f"{C.RED}● Inactive{C.RESET}"
 
 # --- Feature Functions ---
 def create_server_tunnel():
@@ -147,9 +147,9 @@ def create_server_tunnel():
     token = input("Enter auth token (leave empty to generate): ")
     if not token: 
         token = ''.join(random.choices(string.ascii_letters + string.digits, k=16))
-        colorize(f"ðŸ”‘ Generated token: {token}", C.YELLOW)
+        colorize(f"🔑 Generated token: {token}", C.YELLOW)
     
-    # TCP_NODELAY Ù¾ÛŒØ´â€ŒÙØ±Ø¶ ÙØ¹Ø§Ù„
+    # TCP_NODELAY پیش‌فرض فعال
     nodelay_input = input("Disable TCP_NODELAY? (y/n, default: n - keeps enabled): ") or "n"
     nodelay = nodelay_input.lower() != 'y'
     
@@ -198,7 +198,7 @@ def create_server_tunnel():
     run_cmd(['mv', f'/tmp/{tunnel_name}.toml', f"{TUNNELS_DIR}/{tunnel_name}.toml"], as_root=True)
     create_service(tunnel_name)
     run_cmd(['systemctl', 'start', f'backhaul-{tunnel_name}.service'], as_root=True)
-    colorize(f"\nâœ… Tunnel '{tunnel_name}' created. Verifying status...", C.GREEN, bold=True)
+    colorize(f"\n✅ Tunnel '{tunnel_name}' created. Verifying status...", C.GREEN, bold=True)
     time.sleep(3)
     service_name = f'backhaul-{tunnel_name}.service'
     status_text = get_service_status(service_name)
@@ -215,14 +215,14 @@ def create_client_tunnel():
     
     tunnel_name = get_valid_tunnel_name()
     
-    # Ø¬Ø¯Ø§Ø³Ø§Ø²ÛŒ IP Ùˆ Ù¾ÙˆØ±Øª
+    # جداسازی IP و پورت
     server_ip = input("Enter server IP address (e.g., 1.2.3.4): ")
     if not server_ip:
         colorize("Server IP is required!", C.RED)
         time.sleep(1)
         return
     
-    # Ø§Ø¹ØªØ¨Ø§Ø±Ø³Ù†Ø¬ÛŒ IP Ø³Ø§Ø¯Ù‡
+    # اعتبارسنجی IP ساده
     parts = server_ip.split('.')
     if len(parts) != 4 or not all(part.isdigit() and 0 <= int(part) <= 255 for part in parts):
         colorize("Invalid IP format! Use format like 1.2.3.4", C.RED)
@@ -244,9 +244,9 @@ def create_client_tunnel():
         colorize("Testing connection...", C.YELLOW)
         result = run_cmd(['nc', '-z', '-v', '-w5', server_ip, server_port])
         if result.returncode == 0:
-            colorize("âœ… Connection test successful!", C.GREEN)
+            colorize("✅ Connection test successful!", C.GREEN)
         else:
-            colorize("âš ï¸ Connection test failed. Continuing anyway...", C.YELLOW)
+            colorize("⚠️ Connection test failed. Continuing anyway...", C.YELLOW)
         time.sleep(2)
     
     colorize("\nAvailable transport protocols:", C.CYAN)
@@ -255,7 +255,7 @@ def create_client_tunnel():
     token = input("Enter auth token (must match server): ")
     connection_pool = int(input("Enter connection pool size (default: 8): ") or "8")
     
-    # TCP_NODELAY Ù¾ÛŒØ´â€ŒÙØ±Ø¶ ÙØ¹Ø§Ù„
+    # TCP_NODELAY پیش‌فرض فعال
     nodelay_input = input("Disable TCP_NODELAY? (y/n, default: n - keeps enabled): ") or "n"
     nodelay = nodelay_input.lower() != 'y'
     
@@ -291,7 +291,7 @@ def create_client_tunnel():
     run_cmd(['mv', f'/tmp/{tunnel_name}.toml', f"{TUNNELS_DIR}/{tunnel_name}.toml"], as_root=True)
     create_service(tunnel_name)
     run_cmd(['systemctl', 'start', f'backhaul-{tunnel_name}.service'], as_root=True)
-    colorize(f"\nâœ… Tunnel '{tunnel_name}' created. Verifying status...", C.GREEN, bold=True)
+    colorize(f"\n✅ Tunnel '{tunnel_name}' created. Verifying status...", C.GREEN, bold=True)
     time.sleep(3)
     service_name = f'backhaul-{tunnel_name}.service'
     status_text = get_service_status(service_name)
@@ -302,7 +302,7 @@ def create_client_tunnel():
 
 def manage_tunnel():
     clear_screen()
-    colorize("--- ðŸ”§ Tunnel Management Menu ---", C.YELLOW, bold=True)
+    colorize("--- 🔧 Tunnel Management Menu ---", C.YELLOW, bold=True)
     
     try:
         tunnel_files = [f for f in sorted(os.listdir(TUNNELS_DIR)) if f.endswith(".toml")]
@@ -320,7 +320,7 @@ def manage_tunnel():
         tunnels_info = []
     
     if not tunnels_info:
-        colorize("âš ï¸ No tunnels found.", C.YELLOW)
+        colorize("⚠️ No tunnels found.", C.YELLOW)
         press_key()
         return
     
@@ -328,11 +328,11 @@ def manage_tunnel():
     print(f"{'---':<4} {'----':<15} {'----':<20} {'------------'}")
     for i, info in enumerate(tunnels_info, 1):
         safe_name = sanitize_for_print(info['name'])
-        # Ø±Ù†Ú¯â€ŒØ¨Ù†Ø¯ÛŒ Ø¨Ø± Ø§Ø³Ø§Ø³ Ù†ÙˆØ¹ Ø³Ø±ÙˆØ±
+        # رنگ‌بندی بر اساس نوع سرور
         if info['type'] == "Server":
-            type_display = f"{C.GREEN}ðŸ‡®ðŸ‡· Iran{C.RESET}"
+            type_display = f"{C.GREEN}🇮🇷 Iran{C.RESET}"
         elif info['type'] == "Client":
-            type_display = f"{C.RED}ðŸŒ Kharej{C.RESET}"
+            type_display = f"{C.RED}🌍 Kharej{C.RESET}"
         else:
             type_display = f"{C.WHITE}Unknown{C.RESET}"
         
@@ -372,7 +372,7 @@ def manage_tunnel():
                 run_cmd(['rm', '-f', f"{SERVICE_DIR}/{service_name}"], as_root=True)
                 run_cmd(['rm', '-f', config_path], as_root=True)
                 run_cmd(['systemctl', 'daemon-reload'], as_root=True)
-                colorize(f"âœ… Tunnel '{safe_selected_tunnel}' has been completely deleted.", C.GREEN, bold=True)
+                colorize(f"✅ Tunnel '{safe_selected_tunnel}' has been completely deleted.", C.GREEN, bold=True)
                 press_key()
                 return
             else:
@@ -409,8 +409,8 @@ def manage_tunnel():
 def configure_new_tunnel():
     clear_screen()
     colorize("--- Configure a New Tunnel ---", C.CYAN, bold=True)
-    print(f"{C.GREEN}1) Create Iran Server Tunnel (ðŸ‡®ðŸ‡·){C.RESET}")
-    print(f"{C.RED}2) Create Kharej Client Tunnel (ðŸŒ){C.RESET}")
+    print(f"{C.GREEN}1) Create Iran Server Tunnel (🇮🇷){C.RESET}")
+    print(f"{C.RED}2) Create Kharej Client Tunnel (🌍){C.RESET}")
     choice = input("Enter your choice [1-2]: ")
     if choice == '1': 
         create_server_tunnel()
@@ -455,7 +455,7 @@ def install_backhaul_core():
         # Clean up
         run_cmd(["rm", "-f", "/tmp/backhaul.tar.gz"], as_root=True)
         
-        colorize("âœ… Backhaul Core v0.6.5 installed successfully!", C.GREEN, bold=True)
+        colorize("✅ Backhaul Core v0.6.5 installed successfully!", C.GREEN, bold=True)
         
     except Exception as e:
         colorize(f"Installation error: {e}", C.RED)
@@ -464,7 +464,7 @@ def install_backhaul_core():
 
 def system_optimizer():
     clear_screen()
-    colorize("--- ðŸš€ System Optimization (Hawshemi) ---", C.CYAN, bold=True)
+    colorize("--- 🚀 System Optimization (Hawshemi) ---", C.CYAN, bold=True)
     
     optimizations = [
         ("fs.file-max", "1048576"),
@@ -478,19 +478,19 @@ def system_optimizer():
     for param, value in optimizations:
         result = run_cmd(['sysctl', '-w', f'{param}={value}'], as_root=True)
         if result.returncode == 0:
-            colorize(f"âœ“ {param} = {value}", C.GREEN)
+            colorize(f"✓ {param} = {value}", C.GREEN)
         else:
-            colorize(f"âœ— Failed to set {param}", C.RED)
+            colorize(f"✗ Failed to set {param}", C.RED)
     
     # Apply limits.conf changes
     try:
         with open('/etc/security/limits.conf', 'a') as f:
             f.write("\n# Backhaul optimizations\n* soft nofile 1048576\n* hard nofile 1048576\n")
-        colorize("âœ“ File descriptor limits updated", C.GREEN)
+        colorize("✓ File descriptor limits updated", C.GREEN)
     except Exception as e:
-        colorize(f"âœ— Failed to update limits.conf: {e}", C.RED)
+        colorize(f"✗ Failed to update limits.conf: {e}", C.RED)
     
-    colorize("\nâœ… System optimization completed!", C.GREEN, bold=True)
+    colorize("\n✅ System optimization completed!", C.GREEN, bold=True)
     colorize("Note: Some changes may require a reboot to take effect.", C.YELLOW)
     press_key()
 
@@ -527,7 +527,7 @@ def check_tunnels_status():
         tunnels_info = []
     
     if not tunnels_info:
-        colorize("âš ï¸ No tunnels found.", C.YELLOW)
+        colorize("⚠️ No tunnels found.", C.YELLOW)
         press_key()
         return
     
@@ -535,11 +535,11 @@ def check_tunnels_status():
     print(f"{'----':<20} {'----':<15} {'----':<8} {'------------':<22} {'------'}")
     
     for info in tunnels_info:
-        # Ø±Ù†Ú¯â€ŒØ¨Ù†Ø¯ÛŒ Ø¨Ø± Ø§Ø³Ø§Ø³ Ù†ÙˆØ¹ Ø³Ø±ÙˆØ±
+        # رنگ‌بندی بر اساس نوع سرور
         if info['type'] == "Server":
-            type_display = f"{C.GREEN}ðŸ‡®ðŸ‡· Iran{C.RESET}"
+            type_display = f"{C.GREEN}🇮🇷 Iran{C.RESET}"
         elif info['type'] == "Client":
-            type_display = f"{C.RED}ðŸŒ Kharej{C.RESET}"
+            type_display = f"{C.RED}🌍 Kharej{C.RESET}"
         else:
             type_display = f"{C.WHITE}Unknown{C.RESET}"
         
@@ -573,7 +573,7 @@ def uninstall_backhaul():
     run_cmd(['rm', '-rf', BACKHAUL_DIR, CONFIG_DIR, LOG_DIR], as_root=True)
     run_cmd(['systemctl', 'daemon-reload'], as_root=True)
     
-    colorize("âœ… Backhaul uninstalled completely.", C.GREEN, bold=True)
+    colorize("✅ Backhaul uninstalled completely.", C.GREEN, bold=True)
     sys.exit(0)
 
 # --- Menu Display and Main Loop ---
@@ -584,13 +584,13 @@ def display_menu():
     
     colorize("Script Version: v7.6 (Iran/Kharej Color Coded Final)", C.CYAN)
     colorize(f"Core Version: {core_version}", C.CYAN)
-    print(C.YELLOW + "â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•" + C.RESET)
+    print(C.YELLOW + "═════════════════════════════════════════════" + C.RESET)
     colorize(f"IP Address: {server_ip}", C.WHITE)
     colorize(f"Location: {server_country}", C.WHITE)
     colorize(f"Datacenter: {server_isp}", C.WHITE)
     core_status = f"{C.GREEN}Installed{C.RESET}" if core_version != "N/A" else f"{C.RED}Not Installed{C.RESET}"
     colorize(f"Backhaul Core: {core_status}", C.WHITE)
-    print(C.YELLOW + "â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•" + C.RESET)
+    print(C.YELLOW + "═════════════════════════════════════════════" + C.RESET)
     print("")
     colorize(" 1. Configure a new tunnel", C.WHITE, bold=True)
     colorize(" 2. Tunnel management menu", C.WHITE, bold=True)
