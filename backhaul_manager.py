@@ -149,7 +149,6 @@ def create_server_tunnel():
         token = ''.join(random.choices(string.ascii_letters + string.digits, k=16))
         colorize(f"🔑 Generated token: {token}", C.YELLOW)
     
-    # TCP_NODELAY پیش‌فرض فعال
     nodelay_input = input("Disable TCP_NODELAY? (y/n, default: n - keeps enabled): ") or "n"
     nodelay = nodelay_input.lower() != 'y'
     
@@ -160,7 +159,29 @@ def create_server_tunnel():
     if sniffer:
         web_port = int(input("Enter sniffer web port (default: 0): ") or "0")
     
-    ports_str = input("Enter forwarding ports (e.g., 443, 8080=8000): ")
+    config_dict = {"server": {"bind_addr": bind_addr, "transport": transport, "token": token, "nodelay": nodelay, "sniffer": sniffer, "web_port": web_port, "log_level": "info"}}
+
+    if 'mux' in transport:
+        colorize("\n--- Advanced MUX Configuration (Server) ---", C.CYAN)
+        config_dict["server"]["mux"] = {
+            "con": int(input("Enter mux_con (default: 8): ") or "8"),
+            "version": int(input("Enter mux_version (default: 2): ") or "2"),
+            "framesize": int(input("Enter mux_framesize (default: 32768): ") or "32768"),
+            "recievebuffer": int(input("Enter mux_recievebuffer (default: 4194304): ") or "4194304"),
+            "streambuffer": int(input("Enter mux_streambuffer (default: 2000000): ") or "2000000")
+        }
+        config_dict["server"]["keepalive_period"] = int(input("Enter keepalive_period (seconds, default: 75): ") or "75")
+        config_dict["server"]["heartbeat"] = int(input("Enter heartbeat (seconds, default: 40): ") or "40")
+        config_dict["server"]["channel_size"] = int(input("Enter channel_size (default: 2048): ") or "2048")
+        accept_udp_input = input("Accept UDP? (y/n, default: n): ") or "n"
+        config_dict["server"]["accept_udp"] = accept_udp_input.lower() == 'y'
+        proxy_protocol_input = input("Enable PROXY protocol? (y/n, default: n): ") or "n"
+        config_dict["server"]["proxy_protocol"] = proxy_protocol_input.lower() == 'y'
+        config_dict["server"]["tun_name"] = input("Enter TUN interface name (default: backhaul): ") or "backhaul"
+        config_dict["server"]["tun_subnet"] = input("Enter TUN subnet (default: 10.10.10.0/24): ") or "10.10.10.0/24"
+        config_dict["server"]["mtu"] = int(input("Enter MTU (default: 1500): ") or "1500")
+
+    ports_str = input("\nEnter forwarding ports (e.g., 443, 8080=8000): ")
     valid_ports_list = []
     if ports_str:
         raw_ports = [p.strip() for p in ports_str.split(',') if p.strip()]
@@ -176,11 +197,7 @@ def create_server_tunnel():
             except:
                 colorize(f"Could not parse '{port_entry}'. Added without validation.", C.YELLOW)
                 valid_ports_list.append(port_entry)
-    
-    config_dict = {"server": {"bind_addr": bind_addr, "transport": transport, "token": token, "nodelay": nodelay, "sniffer": sniffer, "web_port": web_port, "log_level": "info", "ports": valid_ports_list}}
-    if 'mux' in transport:
-        colorize("\n--- Advanced MUX Configuration (Server) ---", C.CYAN)
-        config_dict["server"]["mux"] = { "con": int(input("Enter mux_con (default: 8): ") or "8") }
+    config_dict["server"]["ports"] = valid_ports_list
     
     config_content = ""
     for section, params in config_dict.items():
@@ -215,14 +232,12 @@ def create_client_tunnel():
     
     tunnel_name = get_valid_tunnel_name()
     
-    # جداسازی IP و پورت
     server_ip = input("Enter server IP address (e.g., 1.2.3.4): ")
     if not server_ip:
         colorize("Server IP is required!", C.RED)
         time.sleep(1)
         return
     
-    # اعتبارسنجی IP ساده
     parts = server_ip.split('.')
     if len(parts) != 4 or not all(part.isdigit() and 0 <= int(part) <= 255 for part in parts):
         colorize("Invalid IP format! Use format like 1.2.3.4", C.RED)
@@ -238,7 +253,6 @@ def create_client_tunnel():
     remote_addr = f"{server_ip}:{server_port}"
     colorize(f"Connecting to: {remote_addr}", C.CYAN)
     
-    # Test connection (optional)
     test_connection = input("Test connection to server first? (y/n, default: n): ") or "n"
     if test_connection.lower() == 'y':
         colorize("Testing connection...", C.YELLOW)
@@ -255,7 +269,6 @@ def create_client_tunnel():
     token = input("Enter auth token (must match server): ")
     connection_pool = int(input("Enter connection pool size (default: 8): ") or "8")
     
-    # TCP_NODELAY پیش‌فرض فعال
     nodelay_input = input("Disable TCP_NODELAY? (y/n, default: n - keeps enabled): ") or "n"
     nodelay = nodelay_input.lower() != 'y'
     
@@ -278,6 +291,23 @@ def create_client_tunnel():
             "log_level": "info"
         }
     }
+    
+    if 'mux' in transport:
+        colorize("\n--- Advanced MUX Configuration (Client) ---", C.CYAN)
+        config_dict["client"]["mux_version"] = int(input("Enter mux_version (default: 2): ") or "2")
+        config_dict["client"]["mux_framesize"] = int(input("Enter mux_framesize (default: 32768): ") or "32768")
+        config_dict["client"]["mux_recievebuffer"] = int(input("Enter mux_recievebuffer (default: 4194304): ") or "4194304")
+        config_dict["client"]["mux_streambuffer"] = int(input("Enter mux_streambuffer (default: 2000000): ") or "2000000")
+        config_dict["client"]["keepalive_period"] = int(input("Enter keepalive_period (seconds, default: 75): ") or "75")
+        config_dict["client"]["retry_interval"] = int(input("Enter retry_interval (seconds, default: 3): ") or "3")
+        config_dict["client"]["dial_timeout"] = int(input("Enter dial_timeout (seconds, default: 10): ") or "10")
+        aggressive_pool_input = input("Enable aggressive_pool? (y/n, default: n): ") or "n"
+        config_dict["client"]["aggressive_pool"] = aggressive_pool_input.lower() == 'y'
+        ip_limit_input = input("Enable ip_limit? (y/n, default: n): ") or "n"
+        config_dict["client"]["ip_limit"] = ip_limit_input.lower() == 'y'
+        config_dict["client"]["tun_name"] = input("Enter TUN interface name (default: backhaul): ") or "backhaul"
+        config_dict["client"]["tun_subnet"] = input("Enter TUN subnet (default: 10.10.10.0/24): ") or "10.10.10.0/24"
+        config_dict["client"]["mtu"] = int(input("Enter MTU (default: 1500): ") or "1500")
 
     config_content = ""
     for section, params in config_dict.items():
