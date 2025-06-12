@@ -12,7 +12,7 @@ import string
 
 # ====================================================================
 #
-# 🚀 Backhaul Manager v7.5 (Iran/Kharej Color Coded) 🚀
+# 🚀 Backhaul Manager v7.6 (Iran/Kharej Color Coded Final) 🚀
 #
 # ====================================================================
 
@@ -332,7 +332,7 @@ def manage_tunnel():
         if info['type'] == "Server":
             type_display = f"{C.GREEN}🇮🇷 Iran{C.RESET}"
         elif info['type'] == "Client":
-            type_display = f"{C.BLUE}🌍 Kharej{C.RESET}"
+            type_display = f"{C.RED}🌍 Kharej{C.RESET}"
         else:
             type_display = f"{C.WHITE}Unknown{C.RESET}"
         
@@ -409,8 +409,8 @@ def manage_tunnel():
 def configure_new_tunnel():
     clear_screen()
     colorize("--- Configure a New Tunnel ---", C.CYAN, bold=True)
-    print("\n1) Create Iran Server Tunnel (🇮🇷)")
-    print("2) Create Kharej Client Tunnel (🌍)")
+    print(f"{C.GREEN}1) Create Iran Server Tunnel (🇮🇷){C.RESET}")
+    print(f"{C.RED}2) Create Kharej Client Tunnel (🌍){C.RESET}")
     choice = input("Enter your choice [1-2]: ")
     if choice == '1': 
         create_server_tunnel()
@@ -539,7 +539,7 @@ def check_tunnels_status():
         if info['type'] == "Server":
             type_display = f"{C.GREEN}🇮🇷 Iran{C.RESET}"
         elif info['type'] == "Client":
-            type_display = f"{C.BLUE}🌍 Kharej{C.RESET}"
+            type_display = f"{C.RED}🌍 Kharej{C.RESET}"
         else:
             type_display = f"{C.WHITE}Unknown{C.RESET}"
         
@@ -582,7 +582,7 @@ def display_menu():
     server_ip, server_country, server_isp = get_server_info()
     core_version = get_core_version()
     
-    colorize("Script Version: v7.5 (Iran/Kharej Color Coded)", C.CYAN)
+    colorize("Script Version: v7.6 (Iran/Kharej Color Coded Final)", C.CYAN)
     colorize(f"Core Version: {core_version}", C.CYAN)
     print(C.YELLOW + "═════════════════════════════════════════════" + C.RESET)
     colorize(f"IP Address: {server_ip}", C.WHITE)
